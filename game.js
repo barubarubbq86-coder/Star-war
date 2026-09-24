@@ -36,6 +36,19 @@
     result.area=typeof raw?.area==='boolean'?raw.area:preset.area;
     return result;
   }
+  const enemyStatRules={hp:[30,5000],atk:[1,600],speed:[20,260],range:[20,320],
+    interval:[.25,5],size:[40,140]};
+  const defaultEnemyStats={hp:220,atk:32,speed:83,range:60,interval:1.3,size:65,area:false};
+  function normalizedEnemyStats(raw) {
+    const result={};
+    for(const [key,[min,max]] of Object.entries(enemyStatRules)){
+      const value=raw&&raw[key]!==''&&raw[key]!=null?Number(raw[key]):NaN;
+      const bounded=Number.isFinite(value)?Math.max(min,Math.min(max,value)):defaultEnemyStats[key];
+      result[key]=key==='interval'?Math.round(bounded*100)/100:Math.round(bounded);
+    }
+    result.area=typeof raw?.area==='boolean'?raw.area:false;
+    return result;
+  }
   const baseAllies = names.map((name,i) => ({
     name,hp:90+i*30,atk:13+i*7,speed:80+(i%4)*16,
     range:40+(i%5)*22,cost:60+i*38,rarity:Math.min(3,Math.floor(i/4)),
@@ -71,9 +84,9 @@
   ].map(([name,diff,pool,boss],theme) => ({name,diff,pool,boss,theme:theme%6}));
   const stateKey = 'starlingSiege';
   const fresh = () => ({
-    version:4,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
+    version:5,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
     plus:Array(35).fill(0),owned:[0,1,2,3,4],deck:[0,1,2,3,4],
-    customChars:[],customStages:[],enemyNames:{},lastLogin:''
+    customChars:[],customEnemies:[],customStages:[],enemyNames:{},lastLogin:''
   });
   let state;
   try { state = {...fresh(),...JSON.parse(localStorage.getItem(stateKey)||'{}')}; }
@@ -97,12 +110,23 @@
     });
     state.version=3;
   }
-  state.version=4;
+  state.version=5;
   state.customChars=Array.isArray(state.customChars)?state.customChars.slice(0,20).map(raw=>{
     const s=raw&&typeof raw==='object'?raw:{};
     return {...s,stats:normalizedStats(s.stats,s.role)};
   }):[];
-  state.customStages=Array.isArray(state.customStages)?state.customStages.slice(0,20):[];
+  // Published enemy indices 0–19 never move; custom enemies are appended at 20+.
+  state.customEnemies=Array.isArray(state.customEnemies)?state.customEnemies.slice(0,20).map((raw,n)=>{
+    const s=raw&&typeof raw==='object'?raw:{};
+    return {id:'C-'+String(n+1).padStart(2,'0'),name:String(s.name||'敵キャラ'+(n+1)).slice(0,24),
+      type:s.type==='B'?'B':'M',stats:normalizedEnemyStats(s.stats)};
+  }):[];
+  const enemyCount=enemies.length+state.customEnemies.length;
+  state.customStages=Array.isArray(state.customStages)?state.customStages.slice(0,20).map(raw=>{
+    const s=raw&&typeof raw==='object'?raw:{};
+    const pool=Array.isArray(s.pool)?[...new Set(s.pool.filter(i=>Number.isInteger(i)&&i>=0&&i<enemyCount))].slice(0,8):[];
+    return {...s,pool:pool.length?pool:[0],boss:Number.isInteger(s.boss)&&s.boss>=0&&s.boss<enemyCount?s.boss:15};
+  }):[];
   state.owned=Array.isArray(state.owned)?[...new Set(state.owned.filter(n=>Number.isInteger(n)&&n>=0&&n<15+state.customChars.length))]:[0,1,2,3,4];
   if (!state.owned.length) state.owned=[0];
   state.deck=Array.isArray(state.deck)?[...new Set(state.deck.filter(n=>state.owned.includes(n)))].slice(0,8):[0,1,2,3,4];
@@ -124,7 +148,16 @@
     state.lastLogin=today;state.cans+=10;save();
     $('homeLog').textContent='ログインボーナス：★10！';
   }
-  function enemyName(i) { return state.enemyNames[enemies[i].id]||enemies[i].id; }
+  function allEnemies() {
+    return enemies.concat(state.customEnemies.map((s,n)=>({
+      ...normalizedEnemyStats(s.stats),id:s.id,name:s.name,type:s.type,
+      rank:n+1,color:color[(n+2)%6]
+    })));
+  }
+  function enemyName(i) {
+    const e=allEnemies()[i];
+    return e?(i<enemies.length?state.enemyNames[e.id]||e.id:e.name):'不明な敵';
+  }
   function allies() {
     return baseAllies.concat(state.customChars.map(s => {
       const r=roles[Number.isInteger(s.role)&&roles[s.role]?s.role:0];
@@ -140,7 +173,10 @@
     if (id==='stages') renderStages();
     if (id==='squad') renderSquad();
     if (id==='roster') renderRoster();
+    if (id==='customAllies') renderCustomAllies();
+    if (id==='customEnemies') renderCustomEnemies();
     if (id==='workshop') refreshAllyTargets();
+    if (id==='paint') refreshPaintTargets();
     wallet();
   }
   $('nav').addEventListener('click',e=>{const id=e.target.dataset.page;if(id)page(id);});
@@ -170,6 +206,7 @@
       renderSquad();
       renderStages();
       renderRoster();
+      renderCustomAllies();renderCustomEnemies();
       $('enemyImportStatus').textContent='この端末に保存済みの敵画像：'+enemies.filter(e=>art.has('enemy:'+e.id)).length+' / 20枚';
       const draft=art.get('paint:draft');
       if(draft){
@@ -222,7 +259,7 @@
   }
   // Twenty deterministic, original creatures keep all stages playable before import.
   function drawEnemyFallback(i) {
-    const e=enemies[i],c=document.createElement('canvas');c.width=c.height=160;
+    const e=allEnemies()[i],c=document.createElement('canvas');c.width=c.height=160;
     const g=c.getContext('2d');
     const palette=['#ee8e8c','#f2bf6e','#8ed6b9','#abaddf','#dba4cf','#8fc4e8'];
     const body=palette[(e.rank+i)%palette.length],boss=e.type==='B';
@@ -261,7 +298,8 @@
     const image=new Image();image.src=c.toDataURL('image/png');return image;
   }
   function enemyArt(i) {
-    const saved=art.get('enemy:'+enemies[i].id);
+    const e=allEnemies()[i];if(!e)return null;
+    const saved=art.get('enemy:'+e.id);
     if(saved)return saved;
     if(!enemyFallbacks.has(i))enemyFallbacks.set(i,drawEnemyFallback(i));
     return enemyFallbacks.get(i);
@@ -323,6 +361,118 @@
       wrap.append(card);
     });
   }
+  function numberEditor(grid,fields,key,label,value,rules) {
+    const row=document.createElement('label'),input=document.createElement('input');
+    row.textContent=label;input.type='number';input.value=String(value);
+    input.min=String(rules[key][0]);input.max=String(rules[key][1]);
+    input.step=key==='interval'||key==='cooldown'?'0.05':'1';
+    row.append(input);grid.append(row);fields[key]=input;
+  }
+  function customNameInput(card,name) {
+    const row=document.createElement('label'),input=document.createElement('input');
+    row.textContent='名前';input.type='text';input.maxLength=24;input.value=name;
+    row.append(input);card.append(row);return input;
+  }
+  function areaEditor(grid,fields,checked) {
+    const row=document.createElement('label'),input=document.createElement('input');
+    row.textContent='範囲攻撃';input.type='checkbox';input.checked=checked;
+    row.append(input);grid.append(row);fields.area=input;
+  }
+  function editActions(card,items) {
+    const row=document.createElement('div');row.className='custom-actions';
+    for(const [label,action] of items){
+      const button=document.createElement('button');button.textContent=label;button.onclick=action;
+      row.append(button);
+    }
+    card.append(row);
+  }
+  function renderCustomAllies() {
+    const wrap=$('customAllyCards');wrap.replaceChildren();
+    state.customChars.forEach((character,n)=>{
+      const i=15+n,a=allies()[i],card=document.createElement('article');
+      card.className='card custom-card';
+      const picture=allyArt(i);
+      if(picture){const img=document.createElement('img');img.src=picture.src;img.alt=a.name+'の絵';card.append(img);}
+      else{const swatch=document.createElement('div');swatch.style.cssText=
+        'width:110px;height:90px;border-radius:15px;background:'+a.color;card.append(swatch);}
+      const title=document.createElement('h3');title.textContent='味方 '+(n+1);card.append(title);
+      const name=customNameInput(card,a.name),fields={},grid=document.createElement('div');
+      grid.className='stat-grid';
+      for(const [key,label] of [['hp','HP'],['atk','攻撃力'],['cost','ユニットコスト（円）'],
+        ['speed','移動速度'],['range','射程'],['interval','攻撃間隔（秒）'],
+        ['cooldown','生産クールタイム（秒）']]){
+        numberEditor(grid,fields,key,label,a[key],statRules);
+      }
+      areaEditor(grid,fields,a.area);card.append(grid);
+      editActions(card,[
+        ['変更を保存',()=>{
+          const raw={area:fields.area.checked};
+          for(const key of statKeys)raw[key]=fields[key].value;
+          const previous=state.customChars[n];
+          state.customChars[n]={...previous,name:name.value.trim().slice(0,24)||'バディ'+(n+1),
+            stats:normalizedStats(raw,previous.role)};
+          if(!save()){
+            state.customChars[n]=previous;
+            $('customAllyStatus').textContent='保存できませんでした。端末の空き容量を確認してください。';
+            return;
+          }
+          $('customAllyStatus').textContent=state.customChars[n].name+'を保存しました。';
+          renderCustomAllies();renderSquad();refreshCharacterList();refreshAllyTargets();refreshPaintTargets();
+        }],
+        ['絵をペイントで編集',()=>openPainting('ally',i)],
+        ['見た目を工房で編集',()=>{
+          page('workshop');selectTab('character');
+          $('editCharacter').value=String(i);loadCharacterEditor();
+        }]
+      ]);
+      wrap.append(card);
+    });
+  }
+  function renderCustomEnemies() {
+    const wrap=$('customEnemyCards');wrap.replaceChildren();
+    state.customEnemies.forEach((character,n)=>{
+      const i=enemies.length+n,e=allEnemies()[i],card=document.createElement('article');
+      card.className='card custom-card';
+      const img=document.createElement('img');img.src=enemyArt(i).src;img.alt=e.name+'の絵';card.append(img);
+      const title=document.createElement('h3');title.textContent='敵 '+(n+1);card.append(title);
+      const name=customNameInput(card,e.name),typeRow=document.createElement('label');
+      typeRow.textContent='種類（自作ステージの配置先）';
+      const type=document.createElement('select');
+      for(const [value,label] of [['M','モブ'],['B','ボス']]){
+        const option=document.createElement('option');option.value=value;option.textContent=label;type.append(option);
+      }
+      type.value=e.type;typeRow.append(type);card.append(typeRow);
+      const fields={},grid=document.createElement('div');grid.className='stat-grid';
+      for(const [key,label] of [['hp','HP'],['atk','攻撃力'],['speed','移動速度'],
+        ['range','射程'],['interval','攻撃間隔（秒）'],['size','戦闘中の大きさ']]){
+        numberEditor(grid,fields,key,label,e[key],enemyStatRules);
+      }
+      areaEditor(grid,fields,e.area);card.append(grid);
+      editActions(card,[
+        ['変更を保存',()=>{
+          const raw={area:fields.area.checked};
+          for(const key of Object.keys(enemyStatRules))raw[key]=fields[key].value;
+          const previous=state.customEnemies[n];
+          state.customEnemies[n]={...previous,name:name.value.trim().slice(0,24)||'敵キャラ'+(n+1),
+            type:type.value==='B'?'B':'M',stats:normalizedEnemyStats(raw)};
+          if(!save()){
+            state.customEnemies[n]=previous;
+            $('customEnemyStatus').textContent='保存できませんでした。端末の空き容量を確認してください。';
+            return;
+          }
+          $('customEnemyStatus').textContent=state.customEnemies[n].name+'を保存しました。';
+          renderCustomEnemies();renderStages();renderStageBuilder();refreshPaintTargets();
+        }],
+        ['絵をペイントで編集',()=>openPainting('enemy',i)]
+      ]);
+      wrap.append(card);
+    });
+  }
+  $('newCustomAlly').onclick=()=>{
+    page('workshop');selectTab('character');$('editCharacter').value='new';loadCharacterEditor();
+  };
+  $('paintCustomAlly').onclick=()=>openPainting('ally','new');
+  $('newCustomEnemy').onclick=()=>openPainting('enemy','new');
   function renderRoster() {
     const wrap=$('enemyRoster');wrap.replaceChildren();
     enemies.forEach((e,i)=>{
@@ -494,19 +644,26 @@
   }
   $('statArea').onchange=()=>{readEditorStats();showEditorStats();};
   $('editCharacter').onchange=loadCharacterEditor;
-  function createCharacter(fromArt=false) {
+  function createCharacter(fromArt=false,requestedName='') {
     if(state.customChars.length>=20){$('charStatus').textContent='自作キャラは20体までです';return null;}
     const number=state.customChars.length,idx=15+number;
-    const name=fromArt&&$('editCharacter').value!=='new'?'バディ'+(number+1):
-      $('customName').value.trim().slice(0,24)||'バディ'+(number+1);
+    const name=requestedName.trim().slice(0,24)||
+      (fromArt&&$('editCharacter').value!=='new'?'バディ'+(number+1):
+        $('customName').value.trim().slice(0,24)||'バディ'+(number+1));
     state.customChars.push({...cp,name,stats:readEditorStats()});
     state.owned.push(idx);
     if(state.deck.length<8)state.deck.push(idx);
-    const persisted=save();refreshAllyTargets();refreshCharacterList();
+    const persisted=save();
+    if(!persisted){
+      state.customChars.pop();state.owned=state.owned.filter(i=>i!==idx);
+      state.deck=state.deck.filter(i=>i!==idx);
+      $('charStatus').textContent='保存に失敗しました。端末の空き容量を確認してください。';
+      return null;
+    }
+    refreshAllyTargets();refreshPaintTargets();refreshCharacterList();
     $('editCharacter').value=String(idx);
     $('createChar').textContent='このキャラの変更を保存';
-    $('charStatus').textContent=persisted?name+'をこの端末に保存しました。':
-      '保存に失敗しました。端末の空き容量を確認してください。';
+    $('charStatus').textContent=name+'をこの端末に保存しました。';
     return idx;
   }
   $('createChar').onclick=()=>{
@@ -523,22 +680,28 @@
       stats:readEditorStats()};
     if(save())$('charStatus').textContent=state.customChars[slot].name+'の変更をこの端末に保存しました。';
     else $('charStatus').textContent='保存に失敗しました。端末の空き容量を確認してください。';
-    refreshCharacterList();refreshAllyTargets();renderSquad();
+    refreshCharacterList();refreshAllyTargets();refreshPaintTargets();renderSquad();renderCustomAllies();
   };
 
   const sp={difficulty:0,boss:15,theme:0,pool:[0,1,2]};
   function renderStageBuilder() {
+    const choices=allEnemies();
+    const bosses=choices.map((e,i)=>e.type==='B'?i:-1).filter(i=>i>=0);
+    const mobs=choices.map((e,i)=>e.type==='M'?i:-1).filter(i=>i>=0);
+    if(!bosses.includes(sp.boss))sp.boss=bosses[0];
+    sp.pool=sp.pool.filter(i=>mobs.includes(i));
+    if(!sp.pool.length)sp.pool=[mobs[0]];
     const wrap=$('stageControls');wrap.replaceChildren();
-    for(const [key,label,max] of [['difficulty','難易度',6],['boss','ボス',5],['theme','背景色',6]]) {
+    for(const [key,label,max] of [['difficulty','難易度',6],['boss','ボス',bosses.length],['theme','背景色',6]]) {
       const shown=key==='boss'?enemyName(sp.boss):String(sp[key]+1);
       stepper(wrap,label,shown,
-        ()=>{sp[key]=key==='boss'?15+(sp.boss-15+4)%5:(sp[key]-1+max)%max;renderStageBuilder();},
-        ()=>{sp[key]=key==='boss'?15+(sp.boss-15+1)%5:(sp[key]+1)%max;renderStageBuilder();});
+        ()=>{sp[key]=key==='boss'?bosses[(bosses.indexOf(sp.boss)-1+max)%max]:(sp[key]-1+max)%max;renderStageBuilder();},
+        ()=>{sp[key]=key==='boss'?bosses[(bosses.indexOf(sp.boss)+1)%max]:(sp[key]+1)%max;renderStageBuilder();});
     }
     $('stagePreview').style.background='radial-gradient(circle,'+color[sp.theme]+',#0e192a 70%)';
     $('stageSummary').textContent='難易度 '+(sp.difficulty+1)+'・敵'+sp.pool.length+'種・ボス '+enemyName(sp.boss);
     const grid=$('enemyGrid');grid.replaceChildren();
-    mobs.forEach((_,i)=>{
+    mobs.forEach(i=>{
       const button=document.createElement('button');button.textContent=enemyName(i);
       if(sp.pool.includes(i))button.classList.add('active');
       button.onclick=()=>{
@@ -572,18 +735,53 @@
   refreshCharacterList();renderChar();renderStageBuilder();
 
   function refreshAllyTargets() {
-    for(const target of [$('allyTarget'),$('paintTarget')]){
-      const selected=target.value;target.replaceChildren();
-      const newOne=document.createElement('option');newOne.value='new';
-      newOne.textContent='新しいキャラとして作る';target.append(newOne);
+    const target=$('allyTarget'),selected=target.value;target.replaceChildren();
+    const newOne=document.createElement('option');newOne.value='new';
+    newOne.textContent='新しい味方として作る';target.append(newOne);
+    allies().forEach((a,i)=>{
+      const option=document.createElement('option');option.value=String(i);
+      option.textContent=a.name+'（'+(state.owned.includes(i)?'所持':'未所持')+'）';
+      target.append(option);
+    });
+    target.value=[...target.options].some(o=>o.value===selected)?selected:'new';
+  }
+  function refreshPaintTargets() {
+    const target=$('paintTarget'),selected=target.value,enemy=$('paintSide').value==='enemy';
+    target.replaceChildren();
+    const newOne=document.createElement('option');newOne.value='new';
+    newOne.textContent=enemy?'新しい敵を作る':'新しい味方を作る';target.append(newOne);
+    if(enemy){
+      state.customEnemies.forEach((character,n)=>{
+        const option=document.createElement('option');option.value=String(enemies.length+n);
+        option.textContent=character.name+'（自作敵）';target.append(option);
+      });
+    }else{
       allies().forEach((a,i)=>{
         const option=document.createElement('option');option.value=String(i);
-        option.textContent=a.name+'（'+(state.owned.includes(i)?'所持':'未所持')+'）';
-        target.append(option);
+        option.textContent=a.name+(i>=15?'（自作味方）':'（既存の味方）');target.append(option);
       });
-      target.value=[...target.options].some(o=>o.value===selected)?selected:'new';
+    }
+    target.value=[...target.options].some(o=>o.value===selected)?selected:'new';
+    $('paintName').disabled=target.value!=='new';
+    if(target.value!=='new'){
+      $('paintName').value=enemy?state.customEnemies[Number(target.value)-enemies.length]?.name||'':
+        allies()[Number(target.value)]?.name||'';
+    }else if(!$('paintName').value.trim()){
+      $('paintName').value=enemy?'敵キャラ'+(state.customEnemies.length+1):
+        'バディ'+(state.customChars.length+1);
     }
   }
+  $('paintSide').onchange=()=>{
+    ++paintLoad;
+    $('savePaint').disabled=false;
+    $('paintTarget').value='new';$('paintName').value='';refreshPaintTargets();
+  };
+  $('paintTarget').onchange=()=>{
+    ++paintLoad;
+    $('paintName').value='';refreshPaintTargets();
+    $('savePaint').disabled=$('paintTarget').value!=='new';
+    if($('paintTarget').value!=='new')loadPaintImage();
+  };
 
   // Chroma-key only background-connected green pixels to preserve isolated green details.
   let uploadedImage=null,processed=false;
@@ -677,7 +875,7 @@
       $('importStatus').textContent='画像を保存できませんでした。ブラウザの空き容量を確認してください。';
     }
   };
-  async function saveCharacterArt(blob,target){
+  async function saveCharacterArt(blob,target,requestedName=''){
     if(!blob||!database)throw new Error('保存できません');
     const isNew=target==='new';
     if(isNew&&state.customChars.length>=20)throw new Error('キャラ数の上限');
@@ -685,15 +883,81 @@
     if(!Number.isInteger(index)||index<0||index>=allies().length+(isNew?1:0))
       throw new Error('適用先が不正');
     await putArt('ally:'+index,blob);
-    if(isNew)createCharacter(true);
+    if(isNew&&createCharacter(true,requestedName)===null){
+      await removeArt('ally:'+index);throw new Error('キャラを保存できませんでした');
+    }
+    return index;
+  }
+  async function saveCustomEnemyArt(blob,target,requestedName='') {
+    if(!blob||!database)throw new Error('画像を保存できません');
+    const isNew=target==='new';
+    if(isNew&&state.customEnemies.length>=20)throw new Error('敵キャラ数の上限');
+    const index=isNew?enemies.length+state.customEnemies.length:Number(target);
+    if(!Number.isInteger(index)||index<enemies.length||
+       index>=enemies.length+state.customEnemies.length+(isNew?1:0)){
+      throw new Error('敵の適用先が不正');
+    }
+    const n=index-enemies.length,id='C-'+String(n+1).padStart(2,'0');
+    await putArt('enemy:'+id,blob);
+    if(isNew){
+      state.customEnemies.push({id,name:requestedName.trim().slice(0,24)||'敵キャラ'+(n+1),
+        type:'M',stats:{...defaultEnemyStats}});
+      if(!save()){
+        state.customEnemies.pop();await removeArt('enemy:'+id);
+        throw new Error('敵キャラを保存できませんでした');
+      }
+      renderStageBuilder();
+    }
+    refreshPaintTargets();renderCustomEnemies();renderStages();
     return index;
   }
 
   // One-sheet drawing desk: pen, eraser, contiguous fill, history, and local draft.
   const paintCanvas=$('paintCanvas'),paintContext=paintCanvas.getContext('2d',{willReadFrequently:true});
   const paintColors=['#222b36','#f8f7ed','#ec515e','#ffb347','#f8dc58','#63c489','#51a5e6','#9a73c8'];
-  let paintColor=paintColors[0],tool='pen',stroke=null,draftTimer=0,paintTouched=false;
+  let paintColor=paintColors[0],tool='pen',stroke=null,draftTimer=0,paintTouched=false,paintLoad=0;
   const undoHistory=[],redoHistory=[];
+  function openPainting(side,target='new') {
+    ++paintLoad;
+    $('paintSide').value=side;
+    $('paintTarget').value='new';$('paintName').value='';
+    refreshPaintTargets();page('paint');
+    $('paintTarget').value=String(target);refreshPaintTargets();
+    $('savePaint').disabled=target!=='new';
+    $('paintStatus').textContent=target==='new'?'絵を描いて「この絵をキャラに設定」を押してください。':'';
+    if(target!=='new')loadPaintImage();
+  }
+  async function loadPaintImage() {
+    const side=$('paintSide').value,target=$('paintTarget').value,index=Number(target);
+    const token=++paintLoad;
+    $('paintStatus').textContent='保存済みの絵を読み込んでいます…';
+    await artReady;
+    if(token!==paintLoad||$('paintSide').value!==side||$('paintTarget').value!==target)return;
+    const image=side==='enemy'?enemyArt(index):allyArt(index);
+    if(!image){
+      $('savePaint').disabled=false;
+      $('paintStatus').textContent='このキャラにはまだ絵がありません。描き始めてください。';return;
+    }
+    const apply=()=>{
+      if(token!==paintLoad||$('paintSide').value!==side||$('paintTarget').value!==target)return;
+      remember();paintContext.clearRect(0,0,512,512);
+      const scale=Math.min(480/image.naturalWidth,480/image.naturalHeight);
+      const w=image.naturalWidth*scale,h=image.naturalHeight*scale;
+      paintContext.drawImage(image,(512-w)/2,(512-h)/2,w,h);
+      paintTouched=true;saveDraftSoon();
+      $('savePaint').disabled=false;
+      $('paintStatus').textContent='保存済みの絵を読み込みました。描き直したらもう一度保存してください。';
+    };
+    if(imageReady(image))apply();
+    else{
+      image.addEventListener('load',apply,{once:true});
+      image.addEventListener('error',()=>{
+        if(token!==paintLoad)return;
+        $('savePaint').disabled=false;
+        $('paintStatus').textContent='絵を読み込めませんでした。新しく描いて保存できます。';
+      },{once:true});
+    }
+  }
   function paintControls(){
     $('undoPaint').disabled=undoHistory.length===0;
     $('redoPaint').disabled=redoHistory.length===0;
@@ -782,7 +1046,7 @@
     return true;
   }
   paintCanvas.onpointerdown=e=>{
-    e.preventDefault();
+    e.preventDefault();++paintLoad;$('savePaint').disabled=false;
     const point=canvasPoint(e);
     if(tool==='fill'){fillAt(point.x,point.y);return;}
     paintCanvas.setPointerCapture(e.pointerId);paintTouched=true;
@@ -810,18 +1074,21 @@
   $('brushSize').oninput=()=>$('brushValue').textContent=$('brushSize').value;
   $('undoPaint').onclick=()=>{
     if(!undoHistory.length)return;
+    ++paintLoad;
     redoHistory.push(paintContext.getImageData(0,0,512,512));
     paintContext.putImageData(undoHistory.pop(),0,0);
     paintControls();saveDraftSoon();
   };
   $('redoPaint').onclick=()=>{
     if(!redoHistory.length)return;
+    ++paintLoad;
     undoHistory.push(paintContext.getImageData(0,0,512,512));
     paintContext.putImageData(redoHistory.pop(),0,0);
     paintControls();saveDraftSoon();
   };
   $('clearPaint').onclick=()=>{
     if(!confirm('キャンバスの絵を全部消しますか？'))return;
+    ++paintLoad;
     remember();paintTouched=true;paintContext.clearRect(0,0,512,512);saveDraftSoon();
   };
   const palette=$('paintPalette');
@@ -855,11 +1122,19 @@
     const blob=await paintedBlob();
     if(!blob){$('paintStatus').textContent='まず絵を描いてください。';return;}
     try{
-      const index=await saveCharacterArt(blob,$('paintTarget').value);
-      $('paintStatus').textContent=allies()[index].name+'に絵を設定しました！';
-      renderSquad();
-    }catch{
-      $('paintStatus').textContent='画像を保存できませんでした。端末の空き容量を確認してください。';
+      const side=$('paintSide').value,target=$('paintTarget').value,name=$('paintName').value;
+      if(side==='enemy'){
+        const index=await saveCustomEnemyArt(blob,target,name);
+        $('paintTarget').value=String(index);refreshPaintTargets();
+        $('paintStatus').textContent=enemyName(index)+'を敵として保存しました。上の「自作キャラ 敵」で能力を編集できます。';
+      }else{
+        const index=await saveCharacterArt(blob,target,name);
+        $('paintTarget').value=String(index);refreshPaintTargets();
+        $('paintStatus').textContent=allies()[index].name+'を味方として保存しました。上の「自作キャラ 味方」で能力を編集できます。';
+        renderSquad();renderCustomAllies();
+      }
+    }catch(error){
+      $('paintStatus').textContent=error.message||'画像を保存できませんでした。端末の空き容量を確認してください。';
     }
   };
   $('openPaint').onclick=()=>page('paint');
@@ -930,7 +1205,7 @@
     });
   }
   function spawnEnemy(i) {
-    const a=enemies[i];if(!a)return;
+    const a=allEnemies()[i];if(!a)return;
     const max=Math.round(a.hp*battle.stage.diff);
     battle.units.push({
       a,x:WORLD-105,hp:max,max,ally:false,enemyId:i,
