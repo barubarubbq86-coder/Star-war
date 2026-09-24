@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "スターリング・シージ",
+  "short_name": "星の砦",
+  "description": "手描きキャラで遊ぶ横スクロール防衛ゲーム",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#091423",
+  "theme_color": "#0b1729",
+  "icons": [
+    {"src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+    {"src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}

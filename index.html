@@ -2,10 +2,12 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b1729">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
   <title>スターリング・シージ</title>
   <meta name="description" content="手描きの仲間とオリジナルの敵で遊ぶ、横スクロール防衛ゲーム。">
   <style>
@@ -15,7 +17,7 @@
     input,select{max-width:100%;color:var(--ink);background:#142740;border:1px solid #5a7897;border-radius:9px;padding:.55rem}
     input[type=file]{width:100%}input[type=range]{padding:0;width:100%}
     a{color:#b5f5db}.primary{background:#137966;border-color:#65d7b3}.danger{background:#6d303e;border-color:#ac5d65}.active{border-color:var(--gold);box-shadow:0 0 0 2px #f5cb73aa}
-    #app{max-width:1180px;margin:auto;padding:12px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px}.brand{font-size:clamp(1.25rem,4vw,2rem);font-weight:950;color:var(--mint);letter-spacing:.05em}.wallet{color:var(--gold);font-weight:900;text-align:right}
+    #app{max-width:1180px;margin:auto;padding:12px;padding-top:max(12px,env(safe-area-inset-top));padding-right:max(12px,env(safe-area-inset-right));padding-left:max(12px,env(safe-area-inset-left))}.top{display:flex;justify-content:space-between;align-items:center;gap:12px}.brand{font-size:clamp(1.25rem,4vw,2rem);font-weight:950;color:var(--mint);letter-spacing:.05em}.wallet{color:var(--gold);font-weight:900;text-align:right}
     .nav{display:flex;gap:8px;overflow:auto;padding:10px 0}.nav button{white-space:nowrap;padding:.55rem .75rem}
     .screen{display:none}.screen.show{display:block}.panel{background:linear-gradient(145deg,#172b46,#101f35);border:1px solid #385a7b;border-radius:18px;padding:clamp(14px,2.5vw,26px);box-shadow:0 16px 50px #0005}
     .home-grid,.two{display:grid;grid-template-columns:1.2fr .8fr;gap:16px}.hero h1{font-size:clamp(2.3rem,7vw,4.5rem);line-height:1;margin:.45rem 0}.hero p,.hint{color:var(--muted);line-height:1.6}.hero p{font-size:1.05rem}.bigplay{width:100%;font-size:1.1rem;padding:1.05rem}.mascot{min-height:290px;display:grid;place-items:center;background:radial-gradient(circle,#365f79,#101f34 68%);border-radius:18px}.orb{width:155px;height:155px;border-radius:50%;background:#efc886;position:relative;box-shadow:0 15px 20px #0007;animation:bob 2.3s ease-in-out infinite}.orb:before,.orb:after{content:"";position:absolute;top:49px;width:24px;height:27px;border-radius:50%;background:#203246}.orb:before{left:37px}.orb:after{right:37px}.mouth{position:absolute;left:57px;top:85px;width:42px;height:20px;border-bottom:6px solid #664654;border-radius:50%}@keyframes bob{50%{transform:translateY(-9px)}}
@@ -30,8 +32,9 @@
     .import-panel{margin-top:16px;border:1px solid #477192;border-radius:15px;padding:17px;background:#102239}.import-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.import-controls label{display:block;margin-bottom:4px;color:var(--muted)}.credits{margin-top:22px;color:var(--muted);font-size:.85rem}
     .paint-shell{display:grid;grid-template-columns:90px minmax(0,1fr);gap:12px}.paint-tools{display:flex;flex-direction:column;gap:9px}.paint-tools button{min-height:62px}.paint-main{min-width:0}.paint-top,.paint-bottom{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin:0 0 10px}.paint-bottom{margin:10px 0 0}.paint-frame{display:grid;place-items:center;min-height:300px;padding:12px;border-radius:16px;background:#213c58}.paint-surface{width:min(100%,560px);aspect-ratio:1;display:block;touch-action:none;border:2px solid #7f9cb0;border-radius:3px;box-shadow:0 10px 28px #0007;background-color:#fff;background-image:linear-gradient(45deg,#d7dce0 25%,transparent 25%),linear-gradient(-45deg,#d7dce0 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d7dce0 75%),linear-gradient(-45deg,transparent 75%,#d7dce0 75%);background-size:22px 22px;background-position:0 0,0 11px,11px -11px,-11px 0}
     .paint-swatch{width:42px;height:42px;border-radius:50%;padding:0;border:3px solid #bed5de}.paint-swatch.active{outline:3px solid var(--gold)}.paint-top label,.paint-bottom label{color:var(--muted)}.paint-top input[type=range]{width:140px}.paint-bottom select{min-width:150px}
-    @media(max-width:760px){#app{padding:8px}.home-grid,.two,.builder,.import-controls{grid-template-columns:1fr}.mascot{min-height:160px}.orb{transform:scale(.72)}.wallet{font-size:.82rem}.enemy-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.unitbtn{min-width:93px;font-size:.85rem}.panel{padding:12px}}
+    @media(max-width:760px){#app{padding:8px;padding-top:max(8px,env(safe-area-inset-top));padding-right:max(8px,env(safe-area-inset-right));padding-left:max(8px,env(safe-area-inset-left));padding-bottom:max(12px,env(safe-area-inset-bottom))}.home-grid,.two,.builder,.import-controls{grid-template-columns:1fr}.mascot{min-height:160px}.orb{transform:scale(.72)}.wallet{font-size:.82rem}.enemy-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.unitbtn{min-width:93px;font-size:.85rem;flex:none;min-height:54px}.panel{padding:12px}#nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));overflow:visible}#nav button{white-space:normal;min-height:48px;font-size:.9rem;padding:.45rem .25rem}.battlebar{display:grid;grid-template-columns:auto minmax(0,1fr) auto;overflow:visible}.battlebar #unitButtons{min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:4px}.battlebar .unitbtn{scroll-snap-align:start}.battlebar #worker,.battlebar #retreat{min-height:54px;font-size:.82rem;padding:.5rem;max-width:90px}}
     @media(max-width:760px){.paint-shell{grid-template-columns:1fr}.paint-tools{flex-direction:row}.paint-tools button{flex:1;min-height:48px}.paint-frame{padding:6px;min-height:0}}
+    @media(max-width:520px){#nav{grid-template-columns:repeat(3,minmax(0,1fr))}.stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.stepper{grid-template-columns:44px 1fr 44px}}
   </style>
   <script defer src="game.js"></script>
 </head>
@@ -42,7 +45,7 @@
   </nav>
   <section id="home" class="screen show"><div class="home-grid"><div class="panel hero">
     <div class="hint">ブラウザで遊べる横スクロール防衛ゲーム・絵はこの端末に保存</div><h1>星の砦を<br>守りきれ。</h1>
-    <p>手描きの仲間を出撃させ、20体の敵に挑もう。敵には好きな名前や画像を付けられます。</p>
+    <p>手描きの仲間を出撃させ、20体の敵に挑もう。敵には好きな名前や画像を付けられます。AndroidではChromeのメニューからホーム画面にも追加できます。</p>
     <button class="primary bigplay" id="quickPlay">今すぐテストプレイ</button><div id="homeLog" class="log"></div>
   </div><div class="panel mascot"><div class="orb"><i class="mouth"></i></div></div></div></section>
   <section id="battle" class="screen"><div class="panel">
