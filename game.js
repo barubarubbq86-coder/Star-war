@@ -85,7 +85,7 @@
   ].map(([name,diff,pool,boss],theme) => ({name,diff,pool,boss,theme:theme%6}));
   const stateKey = 'starlingSiege';
   const fresh = () => ({
-    version:6,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
+    version:7,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
     plus:Array(35).fill(0),owned:[0,1,2,3,4],deck:[0,1,2,3,4],
     customChars:[],customEnemies:[],customStages:[],enemyNames:{},hpDisplay:'bar',lastLogin:''
   });
@@ -111,7 +111,7 @@
     });
     state.version=3;
   }
-  state.version=6;
+  state.version=7;
   if(!['bar','number','both','none'].includes(state.hpDisplay))state.hpDisplay='bar';
   state.customChars=Array.isArray(state.customChars)?state.customChars.slice(0,20).map(raw=>{
     const s=raw&&typeof raw==='object'?raw:{};
@@ -123,12 +123,38 @@
     return {id:'C-'+String(n+1).padStart(2,'0'),name:String(s.name||'敵キャラ'+(n+1)).slice(0,24),
       type:s.type==='B'?'B':'M',stats:normalizedEnemyStats(s.stats)};
   }):[];
-  const enemyCount=enemies.length+state.customEnemies.length;
-  state.customStages=Array.isArray(state.customStages)?state.customStages.slice(0,20).map(raw=>{
+  const DEFAULT_MOB_INTERVAL=4.5,MIN_MOB_INTERVAL=.1,MAX_ACTIVE_ENEMIES=120;
+  function enemyType(index) {
+    return index<enemies.length?enemies[index]?.type:
+      state.customEnemies[index-enemies.length]?.type;
+  }
+  // Old stages used one shared random spawn timer. Give each saved mob its own
+  // timer when loading that data, without changing its name or enemy IDs.
+  function normalizedStage(raw,n) {
     const s=raw&&typeof raw==='object'?raw:{};
-    const pool=Array.isArray(s.pool)?[...new Set(s.pool.filter(i=>Number.isInteger(i)&&i>=0&&i<enemyCount))].slice(0,8):[];
-    return {...s,pool:pool.length?pool:[0],boss:Number.isInteger(s.boss)&&s.boss>=0&&s.boss<enemyCount?s.boss:15};
-  }):[];
+    const enemyCount=enemies.length+state.customEnemies.length;
+    const pool=Array.isArray(s.pool)?[...new Set(s.pool.filter(i=>
+      Number.isInteger(i)&&i>=0&&i<enemyCount&&enemyType(i)==='M'))]:[];
+    if(!pool.length&&(!Array.isArray(s.pool)||s.pool.length))pool.push(0);
+    const intervals=s.spawnIntervals&&typeof s.spawnIntervals==='object'?s.spawnIntervals:{};
+    const spawnIntervals={};
+    for(const i of pool){
+      const value=Number(intervals[i]);
+      spawnIntervals[i]=Number.isFinite(value)&&value>=MIN_MOB_INTERVAL?value:DEFAULT_MOB_INTERVAL;
+    }
+    const bossTime=Number(s.bossTime);
+    return {
+      name:String(s.name||'自作ステージ'+(n+1)).trim().slice(0,40)||'自作ステージ'+(n+1),
+      diff:Number.isFinite(s.diff)&&s.diff>0?s.diff:1,
+      theme:Number.isInteger(s.theme)&&s.theme>=0&&s.theme<color.length?s.theme:0,
+      pool,boss:Number.isInteger(s.boss)&&s.boss>=0&&s.boss<enemyCount&&
+        enemyType(s.boss)==='B'?s.boss:15,
+      spawnIntervals,bossTrigger:s.bossTrigger==='castle'?'castle':'time',
+      bossTime:Number.isFinite(bossTime)&&bossTime>=0?bossTime:31
+    };
+  }
+  state.customStages=Array.isArray(state.customStages)?
+    state.customStages.slice(0,20).map(normalizedStage):[];
   state.owned=Array.isArray(state.owned)?[...new Set(state.owned.filter(n=>Number.isInteger(n)&&n>=0&&n<15+state.customChars.length))]:[0,1,2,3,4];
   if (!state.owned.length) state.owned=[0];
   state.deck=Array.isArray(state.deck)?[...new Set(state.deck.filter(n=>state.owned.includes(n)))].slice(0,8):[0,1,2,3,4];
@@ -322,10 +348,18 @@
       const title=document.createElement('h3');title.textContent=(i+1)+'. '+stage.name;
       const desc=document.createElement('p');
       desc.textContent='難易度 ×'+Number(stage.diff).toFixed(2)+' / ボス '+enemyName(stage.boss);
+      if(i>=baseStages.length)desc.textContent+=' / モブ'+stage.pool.length+'種 / '+
+        (stage.bossTrigger==='castle'?'塔が攻撃されたら出現':'開始'+stage.bossTime+'秒後に出現');
       const img=document.createElement('img');img.src=enemyArt(stage.boss).src;img.alt='';
-      const button=document.createElement('button');button.textContent=i>state.cleared?'未解放':'出撃';
-      button.disabled=i>state.cleared;button.onclick=()=>startBattle(i);
-      card.append(title,img,desc,button);wrap.append(card);
+      const locked=i<baseStages.length&&i>state.cleared;
+      const button=document.createElement('button');button.textContent=locked?'未解放':'出撃';
+      button.disabled=locked;button.onclick=()=>startBattle(i);
+      card.append(title,img,desc,button);
+      if(i>=baseStages.length){
+        const edit=document.createElement('button');edit.textContent='ステージを編集';
+        edit.onclick=()=>editStage(i-baseStages.length);card.append(edit);
+      }
+      wrap.append(card);
     });
   }
   function renderSquad() {
@@ -462,12 +496,17 @@
           const previous=state.customEnemies[n];
           state.customEnemies[n]={...previous,name:name.value.trim().slice(0,24)||'敵キャラ'+(n+1),
             type:type.value==='B'?'B':'M',stats:normalizedEnemyStats(raw)};
+          const previousStages=state.customStages;
+          const roleChanged=previous.type!==state.customEnemies[n].type;
+          if(roleChanged)state.customStages=state.customStages.map(normalizedStage);
           if(!save()){
             state.customEnemies[n]=previous;
+            state.customStages=previousStages;
             $('customEnemyStatus').textContent='保存できませんでした。端末の空き容量を確認してください。';
             return;
           }
-          $('customEnemyStatus').textContent=state.customEnemies[n].name+'を保存しました。';
+          $('customEnemyStatus').textContent=state.customEnemies[n].name+'を保存しました。'+
+            (roleChanged?'既存ステージのモブ／ボス配置も更新しました。':'');
           renderCustomEnemies();renderStages();renderStageBuilder();refreshImportTargets();refreshPaintTargets();
         }],
         ['絵をペイントで編集',()=>openPainting('enemy',i)],
@@ -605,45 +644,127 @@
     return idx;
   }
 
-  const sp={difficulty:0,boss:15,theme:0,pool:[0,1,2]};
+  // The stage builder doubles as an editor. Keep unsaved values in this draft.
+  const sp={difficulty:0,boss:15,theme:0,pool:[0,1,2],spawnIntervals:{}};
+  let editingStage=-1;
+  function resetStageBuilder() {
+    editingStage=-1;
+    sp.difficulty=0;sp.boss=15;sp.theme=0;sp.pool=[0,1,2];sp.spawnIntervals={};
+    $('stageName').value='自作ステージ'+(state.customStages.length+1);
+    $('bossTrigger').value='time';$('bossTime').value='31';
+    $('bossTimeRow').hidden=false;
+    $('createStage').textContent='このステージを作る';
+    $('cancelStageEdit').hidden=true;
+    renderStageBuilder();
+  }
+  function editStage(n) {
+    const stage=state.customStages[n];if(!stage)return;
+    editingStage=n;
+    sp.difficulty=Math.max(0,Math.min(5,Math.round((stage.diff-1)/.35)));
+    sp.boss=stage.boss;sp.theme=stage.theme;sp.pool=[...stage.pool];
+    sp.spawnIntervals={...stage.spawnIntervals};
+    $('stageName').value=stage.name;
+    $('bossTrigger').value=stage.bossTrigger;
+    $('bossTime').value=String(stage.bossTime);
+    $('bossTimeRow').hidden=stage.bossTrigger==='castle';
+    $('createStage').textContent='変更を保存';
+    $('cancelStageEdit').hidden=false;
+    $('stageEditor').open=true;
+    renderStageBuilder();
+    $('stageEditor').scrollIntoView?.({behavior:'smooth',block:'start'});
+  }
   function renderStageBuilder() {
     const choices=allEnemies();
     const bosses=choices.map((e,i)=>e.type==='B'?i:-1).filter(i=>i>=0);
     const mobs=choices.map((e,i)=>e.type==='M'?i:-1).filter(i=>i>=0);
     if(!bosses.includes(sp.boss))sp.boss=bosses[0];
     sp.pool=sp.pool.filter(i=>mobs.includes(i));
-    if(!sp.pool.length)sp.pool=[mobs[0]];
     const wrap=$('stageControls');wrap.replaceChildren();
-    for(const [key,label,max] of [['difficulty','難易度',6],['boss','ボス',bosses.length],['theme','背景色',6]]) {
-      const shown=key==='boss'?enemyName(sp.boss):String(sp[key]+1);
-      stepper(wrap,label,shown,
-        ()=>{sp[key]=key==='boss'?bosses[(bosses.indexOf(sp.boss)-1+max)%max]:(sp[key]-1+max)%max;renderStageBuilder();},
-        ()=>{sp[key]=key==='boss'?bosses[(bosses.indexOf(sp.boss)+1)%max]:(sp[key]+1)%max;renderStageBuilder();});
+    for(const [key,label,max] of [['difficulty','難易度',6],['theme','背景色',6]]) {
+      stepper(wrap,label,String(sp[key]+1),
+        ()=>{sp[key]=(sp[key]-1+max)%max;renderStageBuilder();},
+        ()=>{sp[key]=(sp[key]+1)%max;renderStageBuilder();});
     }
+    const bossControl=document.createElement('div'),bossLabel=document.createElement('label');
+    const bossSelect=document.createElement('select');
+    bossControl.className='control';bossLabel.textContent='登場するボス';
+    for(const i of bosses){
+      const option=document.createElement('option');option.value=String(i);
+      option.textContent=enemyName(i);bossSelect.append(option);
+    }
+    bossSelect.value=String(sp.boss);bossSelect.style.width='100%';
+    bossSelect.onchange=()=>{sp.boss=Number(bossSelect.value);renderStageBuilder();};
+    bossLabel.append(bossSelect);bossControl.append(bossLabel);wrap.append(bossControl);
     $('stagePreview').style.background='radial-gradient(circle,'+color[sp.theme]+',#0e192a 70%)';
-    $('stageSummary').textContent='難易度 '+(sp.difficulty+1)+'・敵'+sp.pool.length+'種・ボス '+enemyName(sp.boss);
+    $('stagePreviewName').textContent=$('stageName').value.trim()||'自作ステージ';
+    $('stageSummary').textContent='難易度 '+(sp.difficulty+1)+'・モブ'+sp.pool.length+
+      '種・ボス '+enemyName(sp.boss);
     const grid=$('enemyGrid');grid.replaceChildren();
     mobs.forEach(i=>{
-      const button=document.createElement('button');button.textContent=enemyName(i);
-      if(sp.pool.includes(i))button.classList.add('active');
+      const row=document.createElement('div');row.className='spawn-choice';
+      const selected=sp.pool.includes(i),button=document.createElement('button');
+      button.textContent=(selected?'☑ ':'□ ')+enemyName(i);
+      button.setAttribute('aria-pressed',String(selected));
+      if(selected)button.classList.add('active');
       button.onclick=()=>{
-        if(sp.pool.includes(i)){if(sp.pool.length>1)sp.pool=sp.pool.filter(n=>n!==i);}
-        else if(sp.pool.length<8)sp.pool.push(i);
+        if(sp.pool.includes(i))sp.pool=sp.pool.filter(n=>n!==i);
+        else sp.pool.push(i);
         renderStageBuilder();
       };
-      grid.append(button);
+      row.append(button);
+      if(selected){
+        const label=document.createElement('label'),input=document.createElement('input');
+        label.textContent='出現間隔（秒）';input.type='number';input.min=String(MIN_MOB_INTERVAL);
+        input.step='any';input.inputMode='decimal';
+        input.value=String(sp.spawnIntervals[i]??DEFAULT_MOB_INTERVAL);
+        input.oninput=()=>{sp.spawnIntervals[i]=input.value;};
+        label.append(input);row.append(label);
+      }
+      grid.append(row);
     });
   }
-  $('createStage').onclick=()=>{
-    if(state.customStages.length>=20){$('stageSummary').textContent='自作ステージは20個までです';return;}
-    const n=state.customStages.length+1;
-    state.customStages.push({
-      name:'自作ステージ'+n,diff:1+sp.difficulty*.35,
-      boss:sp.boss,theme:sp.theme,pool:[...sp.pool]
-    });
-    save();log('自作ステージ'+n+'を作りました');page('stages');
+  $('stageName').oninput=()=>{
+    $('stagePreviewName').textContent=$('stageName').value.trim()||'自作ステージ';
   };
-  renderStageBuilder();
+  $('bossTrigger').onchange=()=>{
+    $('bossTimeRow').hidden=$('bossTrigger').value==='castle';
+  };
+  $('cancelStageEdit').onclick=resetStageBuilder;
+  $('createStage').onclick=()=>{
+    if(editingStage<0&&state.customStages.length>=20){
+      $('stageSummary').textContent='自作ステージは20個までです';return;
+    }
+    const name=$('stageName').value.trim().slice(0,40);
+    if(!name){$('stageSummary').textContent='ステージ名を入力してください。';return;}
+    const spawnIntervals={};
+    for(const i of sp.pool){
+      const raw=sp.spawnIntervals[i]??DEFAULT_MOB_INTERVAL,value=Number(raw);
+      if(raw===''||!Number.isFinite(value)||value<MIN_MOB_INTERVAL){
+        $('stageSummary').textContent=enemyName(i)+'の出現間隔は0.1秒以上で入力してください。';return;
+      }
+      spawnIntervals[i]=value;
+    }
+    const bossTimeRaw=$('bossTime').value,bossTime=Number(bossTimeRaw);
+    if($('bossTrigger').value==='time'&&
+      (bossTimeRaw===''||!Number.isFinite(bossTime)||bossTime<0)){
+      $('stageSummary').textContent='ボスの出現時間は0秒以上で入力してください。';return;
+    }
+    const n=editingStage<0?state.customStages.length:editingStage;
+    const stage=normalizedStage({name,diff:1+sp.difficulty*.35,theme:sp.theme,
+      pool:[...sp.pool],boss:sp.boss,spawnIntervals,
+      bossTrigger:$('bossTrigger').value,bossTime:Number.isFinite(bossTime)?bossTime:31},n);
+    const previous=state.customStages[n];
+    if(editingStage<0)state.customStages.push(stage);
+    else state.customStages[n]=stage;
+    if(!save()){
+      if(editingStage<0)state.customStages.pop();else state.customStages[n]=previous;
+      $('stageSummary').textContent='保存できませんでした。端末の空き容量を確認してください。';
+      return;
+    }
+    log(stage.name+(editingStage<0?'を作りました。':'を更新しました。'));
+    resetStageBuilder();renderStages();$('stageEditor').open=false;
+  };
+  resetStageBuilder();
 
   let importSide='ally';
   function refreshImportTargets() {
@@ -1111,13 +1232,17 @@
   $('zoomIn').onclick=()=>setViewWidth(viewWidth/1.25);
   $('zoomFit').onclick=()=>setViewWidth(WORLD);
   function startBattle(index) {
-    const stage=stages()[index];if(!stage||index>state.cleared)return;
+    const stage=stages()[index];
+    if(!stage||(index<baseStages.length&&index>state.cleared))return;
     cancelAnimationFrame(frame);camera=0;viewWidth=BASE_VIEW;
     pointers.clear();drag=null;pinch=null;updateZoomLabel();
     battle={
       index,stage,money:150,cap:1000,worker:1,home:1250,homeMax:1250,
       enemy:Math.round(900*stage.diff),enemyMax:Math.round(900*stage.diff),
-      units:[],spawn:2.3,time:0,bossSpawned:false,result:null,cool:{}
+      units:[],spawn:2.3,time:0,bossSpawned:false,result:null,cool:{},
+      // Custom stages use independent timers. Base stages retain their old rules.
+      mobTimers:index<baseStages.length?null:Object.fromEntries(stage.pool.map(i=>
+        [i,stage.spawnIntervals[i]]))
     };
     $('worker').textContent='働き手 Lv.1';
     $('battleTitle').textContent=stage.name;
@@ -1149,13 +1274,22 @@
       cd:0,hit:0,attackAnim:0,staggerLeft:0,staggerBank:0
     });
   }
-  function spawnEnemy(i) {
-    const a=allEnemies()[i];if(!a)return;
+  function spawnEnemy(i,boss=false) {
+    const a=allEnemies()[i];if(!a)return false;
+    // Protect slower phones if many different mobs are set to very short intervals.
+    if(!boss&&battle.mobTimers&&battle.units.filter(u=>!u.ally&&u.hp>0).length>=MAX_ACTIVE_ENEMIES)
+      return false;
     const max=Math.round(finiteProduct(a.hp,battle.stage.diff));
     battle.units.push({
       a,x:WORLD-105,hp:max,max,ally:false,enemyId:i,
       cd:0,hit:0,attackAnim:0,staggerLeft:0,staggerBank:0
     });
+    return true;
+  }
+  function spawnBoss() {
+    if(battle&&!battle.bossSpawned){
+      battle.bossSpawned=spawnEnemy(battle.stage.boss,true);
+    }
   }
   $('worker').onclick=()=>{
     if(!battle||battle.result)return;
@@ -1188,14 +1322,26 @@
     b.time+=dt;
     b.money=Math.min(b.cap,b.money+(28+15*b.worker)*dt);
     for(const key of Object.keys(b.cool))b.cool[key]=Math.max(0,b.cool[key]-dt);
-    b.spawn-=dt;
-    if(b.spawn<=0){
-      spawnEnemy(b.stage.pool[Math.floor(Math.random()*b.stage.pool.length)]);
-      b.spawn=Math.max(1.5,4.4-b.index*.28)*(.8+Math.random()*.4);
+    if(b.mobTimers){
+      for(const i of b.stage.pool){
+        const interval=b.stage.spawnIntervals[i];
+        b.mobTimers[i]-=dt;
+        if(b.mobTimers[i]<=1e-8){
+          const appeared=spawnEnemy(i);
+          b.mobTimers[i]=appeared?Math.max(MIN_MOB_INTERVAL/2,b.mobTimers[i]+interval):
+            Math.min(.5,interval);
+        }
+      }
+    }else{
+      b.spawn-=dt;
+      if(b.spawn<=0){
+        spawnEnemy(b.stage.pool[Math.floor(Math.random()*b.stage.pool.length)]);
+        b.spawn=Math.max(1.5,4.4-b.index*.28)*(.8+Math.random()*.4);
+      }
     }
-    if(!b.bossSpawned&&(b.time>=31||b.enemy<=b.enemyMax*.58)){
-      spawnEnemy(b.stage.boss);b.bossSpawned=true;
-    }
+    if(!b.bossSpawned&&(b.mobTimers?
+      b.stage.bossTrigger==='time'&&b.time>=b.stage.bossTime:
+      b.time>=31||b.enemy<=b.enemyMax*.58))spawnBoss();
     for(const u of b.units) {
       if(u.hp<=0)continue;
       u.cd=Math.max(0,u.cd-dt);u.hit=Math.max(0,u.hit-dt);
@@ -1215,7 +1361,10 @@
           if(target){
             const victims=u.a.area?foes.filter(v=>Math.abs(v.x-u.x)<=reach+25):[target];
             victims.forEach(v=>damageUnit(v,power));
-          }else if(u.ally)b.enemy-=power;
+          }else if(u.ally){
+            b.enemy-=power;
+            if(b.mobTimers&&b.stage.bossTrigger==='castle')spawnBoss();
+          }
           else b.home-=power;
         }
       }else{
@@ -1231,9 +1380,10 @@
     const b=battle;if(!b||b.result)return;
     b.result=win?'勝利！':'敗北…';
     if(win){
-      const xp=110+b.index*65,stars=20+(b.index>=state.cleared?25:0);
+      const xp=110+b.index*65,stars=20+
+        (b.index<baseStages.length&&b.index>=state.cleared?25:0);
       state.xp+=xp;state.cans+=stars;
-      state.cleared=Math.max(state.cleared,b.index+1);
+      if(b.index<baseStages.length)state.cleared=Math.max(state.cleared,b.index+1);
       log('勝利！ XP'+xp+'・★'+stars+'を獲得');
     }else{state.xp+=25;log('敗北。XP25を獲得');}
     save();
