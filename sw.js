@@ -1,6 +1,6 @@
 // Cache the public game shell. User art remains only in IndexedDB on this device.
 const PREFIX='starling-siege-shell-'+encodeURIComponent(new URL(self.registration.scope).pathname)+'-';
-const CACHE=PREFIX+'v5';
+const CACHE=PREFIX+'v6';
 const SHELL=['./','./index.html','./game.js','./manifest.webmanifest',
   './icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{

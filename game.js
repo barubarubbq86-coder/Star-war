@@ -84,9 +84,9 @@
   ].map(([name,diff,pool,boss],theme) => ({name,diff,pool,boss,theme:theme%6}));
   const stateKey = 'starlingSiege';
   const fresh = () => ({
-    version:5,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
+    version:6,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
     plus:Array(35).fill(0),owned:[0,1,2,3,4],deck:[0,1,2,3,4],
-    customChars:[],customEnemies:[],customStages:[],enemyNames:{},lastLogin:''
+    customChars:[],customEnemies:[],customStages:[],enemyNames:{},hpDisplay:'bar',lastLogin:''
   });
   let state;
   try { state = {...fresh(),...JSON.parse(localStorage.getItem(stateKey)||'{}')}; }
@@ -110,7 +110,8 @@
     });
     state.version=3;
   }
-  state.version=5;
+  state.version=6;
+  if(!['bar','number','both','none'].includes(state.hpDisplay))state.hpDisplay='bar';
   state.customChars=Array.isArray(state.customChars)?state.customChars.slice(0,20).map(raw=>{
     const s=raw&&typeof raw==='object'?raw:{};
     return {...s,stats:normalizedStats(s.stats,s.role)};
@@ -143,6 +144,14 @@
     $('xp').textContent='XP '+Math.floor(state.xp);
     $('cans').textContent='★ '+Math.floor(state.cans);
   }
+  $('unitHpDisplay').value=state.hpDisplay;
+  $('unitHpDisplay').onchange=()=>{
+    state.hpDisplay=$('unitHpDisplay').value;
+    if(!['bar','number','both','none'].includes(state.hpDisplay))state.hpDisplay='bar';
+    $('unitHpDisplay').value=state.hpDisplay;
+    $('settingsStatus').textContent=save()?'キャラクターHPの表示を保存しました。':
+      '設定を保存できませんでした。端末の空き容量を確認してください。';
+  };
   const today=new Date().toLocaleDateString('sv-SE');
   if (state.lastLogin!==today) {
     state.lastLogin=today;state.cans+=10;save();
@@ -170,13 +179,12 @@
   function page(id) {
     if (battle && id!=='battle') { battle=null;cancelAnimationFrame(frame); }
     document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('show',el.id===id));
-    if (id==='stages') renderStages();
+    if (id==='stages') { renderStages();renderStageBuilder(); }
     if (id==='squad') renderSquad();
-    if (id==='roster') renderRoster();
-    if (id==='customAllies') renderCustomAllies();
-    if (id==='customEnemies') renderCustomEnemies();
-    if (id==='workshop') refreshAllyTargets();
+    if (id==='customAllies') {renderCustomAllies();showImport('ally');}
+    if (id==='customEnemies') {renderCustomEnemies();renderRoster();showImport('enemy');}
     if (id==='paint') refreshPaintTargets();
+    if (id==='settings') $('unitHpDisplay').value=state.hpDisplay;
     wallet();
   }
   $('nav').addEventListener('click',e=>{const id=e.target.dataset.page;if(id)page(id);});
@@ -352,10 +360,7 @@
       card.append(title,details,equip,upgrade);
       if(i>=15){
         const edit=document.createElement('button');edit.textContent='能力を編集';
-        edit.onclick=()=>{
-          page('workshop');selectTab('character');
-          $('editCharacter').value=String(i);loadCharacterEditor();
-        };
+        edit.onclick=()=>page('customAllies');
         card.append(edit);
       }
       wrap.append(card);
@@ -417,12 +422,12 @@
             return;
           }
           $('customAllyStatus').textContent=state.customChars[n].name+'を保存しました。';
-          renderCustomAllies();renderSquad();refreshCharacterList();refreshAllyTargets();refreshPaintTargets();
+          renderCustomAllies();renderSquad();refreshImportTargets();refreshPaintTargets();
         }],
         ['絵をペイントで編集',()=>openPainting('ally',i)],
-        ['見た目を工房で編集',()=>{
-          page('workshop');selectTab('character');
-          $('editCharacter').value=String(i);loadCharacterEditor();
+        ['画像を取り込む',()=>{
+          showImport('ally');$('importTarget').value=String(i);refreshImportTargets();
+          $('importPanel').scrollIntoView?.({behavior:'smooth',block:'start'});
         }]
       ]);
       wrap.append(card);
@@ -461,16 +466,18 @@
             return;
           }
           $('customEnemyStatus').textContent=state.customEnemies[n].name+'を保存しました。';
-          renderCustomEnemies();renderStages();renderStageBuilder();refreshPaintTargets();
+          renderCustomEnemies();renderStages();renderStageBuilder();refreshImportTargets();refreshPaintTargets();
         }],
-        ['絵をペイントで編集',()=>openPainting('enemy',i)]
+        ['絵をペイントで編集',()=>openPainting('enemy',i)],
+        ['画像を取り込む',()=>{
+          showImport('enemy');$('importTarget').value=String(i);refreshImportTargets();
+          $('importPanel').scrollIntoView?.({behavior:'smooth',block:'start'});
+        }]
       ]);
       wrap.append(card);
     });
   }
-  $('newCustomAlly').onclick=()=>{
-    page('workshop');selectTab('character');$('editCharacter').value='new';loadCharacterEditor();
-  };
+  $('newCustomAlly').onclick=()=>createCharacter();
   $('paintCustomAlly').onclick=()=>openPainting('ally','new');
   $('newCustomEnemy').onclick=()=>openPainting('enemy','new');
   function renderRoster() {
@@ -566,16 +573,7 @@
   }
   $('pull30').onclick=()=>pull(false);$('pull100').onclick=()=>pull(true);
 
-  const cp={head:0,body:0,mark:0,color:0,role:0};
-  let editorStats=presetStats(0);
-  const statFields={hp:'statHp',atk:'statAtk',speed:'statSpeed',range:'statRange',
-    cost:'statCost',interval:'statInterval',cooldown:'statCooldown'};
-  const options={
-    head:['まる','トゲ','しかく','耳','王冠'],body:['まる','しかく','たて長','よこ長'],
-    mark:['★','○','Z','V','☾','なし'],color:['夕日','若葉','空','桜','土','炎'],
-    role:roles.map(r=>r.name)
-  };
-  const labels={head:'頭',body:'胴体',mark:'飾り',color:'色',role:'役割'};
+  // This stepper is kept for the stage builder; character abilities are edited in their lists.
   function stepper(parent,label,value,back,forward) {
     const el=document.createElement('div');el.className='control';
     const l=document.createElement('label');l.textContent=label;
@@ -585,103 +583,25 @@
     const right=document.createElement('button');right.textContent='▶';right.onclick=forward;
     row.append(left,middle,right);el.append(l,row);parent.append(el);
   }
-  function readEditorStats() {
-    const raw={area:$('statArea').checked};
-    for(const [key,id] of Object.entries(statFields))raw[key]=$(id).value;
-    editorStats=normalizedStats(raw,cp.role);
-    for(const [key,id] of Object.entries(statFields))$(id).value=String(editorStats[key]);
-    return {...editorStats};
-  }
-  function showEditorStats() {
-    const s=editorStats;
-    $('roleStats').textContent='HP '+s.hp+'　攻撃 '+s.atk+'　速さ '+s.speed+
-      '　射程 '+s.range+'　費用 '+s.cost+'円　攻撃間隔 '+s.interval+
-      '秒　生産間隔 '+s.cooldown+'秒'+(s.area?'　範囲攻撃':'');
-  }
-  function renderChar() {
-    const wrap=$('partControls');wrap.replaceChildren();
-    for (const key of Object.keys(options)) {
-      stepper(wrap,labels[key],options[key][cp[key]],
-        ()=>{readEditorStats();cp[key]=(cp[key]-1+options[key].length)%options[key].length;
-          if(key==='role')editorStats=presetStats(cp.role);renderChar();},
-        ()=>{readEditorStats();cp[key]=(cp[key]+1)%options[key].length;
-          if(key==='role')editorStats=presetStats(cp.role);renderChar();});
+  function createCharacter(requestedName='') {
+    if(state.customChars.length>=20){
+      $('customAllyStatus').textContent='自作の味方は20体までです';return null;
     }
-    const creature=$('creaturePreview');
-    creature.className='custom-creature '+(['','square','tall','wide'][cp.body]||'')+(cp.head===3?' ears':'');
-    creature.style.background=color[cp.color];
-    creature.querySelector('.mark').textContent=cp.mark===5?'':options.mark[cp.mark];
-    for(const [key,id] of Object.entries(statFields))$(id).value=String(editorStats[key]);
-    $('statArea').checked=editorStats.area;
-    showEditorStats();
-    refreshAllyTargets();
-  }
-  function refreshCharacterList() {
-    const select=$('editCharacter'),selected=select.value;select.replaceChildren();
-    const newer=document.createElement('option');newer.value='new';
-    newer.textContent='新しいキャラを作る';select.append(newer);
-    state.customChars.forEach((s,n)=>{
-      const option=document.createElement('option');option.value=String(15+n);
-      option.textContent=(s.name||'バディ'+(n+1))+'（自作'+(n+1)+'）';select.append(option);
-    });
-    select.value=[...select.options].some(o=>o.value===selected)?selected:'new';
-    $('createChar').textContent=select.value==='new'?'このキャラを端末に保存':'このキャラの変更を保存';
-  }
-  function loadCharacterEditor() {
-    const index=Number($('editCharacter').value)-15;
-    const s=$('editCharacter').value==='new'?null:state.customChars[index];
-    for(const key of Object.keys(cp)){
-      const value=s?.[key];cp[key]=Number.isInteger(value)&&value>=0&&value<options[key].length?value:0;
-    }
-    editorStats=s?normalizedStats(s.stats,cp.role):presetStats(0);
-    $('customName').value=s?.name||'バディ'+(state.customChars.length+1);
-    $('createChar').textContent=s?'このキャラの変更を保存':'このキャラを端末に保存';
-    $('charStatus').textContent='';
-    renderChar();
-  }
-  for(const id of Object.values(statFields)){
-    $(id).onchange=()=>{readEditorStats();showEditorStats();};
-  }
-  $('statArea').onchange=()=>{readEditorStats();showEditorStats();};
-  $('editCharacter').onchange=loadCharacterEditor;
-  function createCharacter(fromArt=false,requestedName='') {
-    if(state.customChars.length>=20){$('charStatus').textContent='自作キャラは20体までです';return null;}
     const number=state.customChars.length,idx=15+number;
-    const name=requestedName.trim().slice(0,24)||
-      (fromArt&&$('editCharacter').value!=='new'?'バディ'+(number+1):
-        $('customName').value.trim().slice(0,24)||'バディ'+(number+1));
-    state.customChars.push({...cp,name,stats:readEditorStats()});
+    const name=String(requestedName).trim().slice(0,24)||'バディ'+(number+1);
+    state.customChars.push({name,role:0,color:number%color.length,stats:presetStats(0)});
     state.owned.push(idx);
     if(state.deck.length<8)state.deck.push(idx);
-    const persisted=save();
-    if(!persisted){
+    if(!save()){
       state.customChars.pop();state.owned=state.owned.filter(i=>i!==idx);
       state.deck=state.deck.filter(i=>i!==idx);
-      $('charStatus').textContent='保存に失敗しました。端末の空き容量を確認してください。';
+      $('customAllyStatus').textContent='保存に失敗しました。端末の空き容量を確認してください。';
       return null;
     }
-    refreshAllyTargets();refreshPaintTargets();refreshCharacterList();
-    $('editCharacter').value=String(idx);
-    $('createChar').textContent='このキャラの変更を保存';
-    $('charStatus').textContent=name+'をこの端末に保存しました。';
+    refreshImportTargets();refreshPaintTargets();renderSquad();renderCustomAllies();
+    $('customAllyStatus').textContent=name+'を端末に保存しました。下の一覧で能力を編集できます。';
     return idx;
   }
-  $('createChar').onclick=()=>{
-    if($('editCharacter').value==='new'){
-      const i=createCharacter();
-      if(i!==null)renderSquad();
-      return;
-    }
-    const slot=Number($('editCharacter').value)-15;
-    if(!Number.isInteger(slot)||!state.customChars[slot])return;
-    const previous=state.customChars[slot];
-    state.customChars[slot]={...previous,...cp,
-      name:$('customName').value.trim().slice(0,24)||'バディ'+(slot+1),
-      stats:readEditorStats()};
-    if(save())$('charStatus').textContent=state.customChars[slot].name+'の変更をこの端末に保存しました。';
-    else $('charStatus').textContent='保存に失敗しました。端末の空き容量を確認してください。';
-    refreshCharacterList();refreshAllyTargets();refreshPaintTargets();renderSquad();renderCustomAllies();
-  };
 
   const sp={difficulty:0,boss:15,theme:0,pool:[0,1,2]};
   function renderStageBuilder() {
@@ -716,35 +636,51 @@
     if(state.customStages.length>=20){$('stageSummary').textContent='自作ステージは20個までです';return;}
     const n=state.customStages.length+1;
     state.customStages.push({
-      name:'工房ステージ'+n,diff:1+sp.difficulty*.35,
+      name:'自作ステージ'+n,diff:1+sp.difficulty*.35,
       boss:sp.boss,theme:sp.theme,pool:[...sp.pool]
     });
-    save();log('工房ステージ'+n+'を作りました');page('stages');
+    save();log('自作ステージ'+n+'を作りました');page('stages');
   };
-  function selectTab(tab) {
-    const character=tab==='character';
-    $('charBuilder').classList.toggle('hide',!character);
-    $('stageBuilder').classList.toggle('hide',character);
-    $('importPanel').classList.toggle('hide',!character);
-    $('charTab').classList.toggle('active',character);
-    $('stageTab').classList.toggle('active',!character);
-    if(!character)renderStageBuilder();
-  }
-  $('charTab').onclick=()=>selectTab('character');
-  $('stageTab').onclick=()=>selectTab('stage');
-  refreshCharacterList();renderChar();renderStageBuilder();
+  renderStageBuilder();
 
-  function refreshAllyTargets() {
-    const target=$('allyTarget'),selected=target.value;target.replaceChildren();
+  let importSide='ally';
+  function refreshImportTargets() {
+    const target=$('importTarget'),selected=target.value,enemy=importSide==='enemy';
+    target.replaceChildren();
     const newOne=document.createElement('option');newOne.value='new';
-    newOne.textContent='新しい味方として作る';target.append(newOne);
-    allies().forEach((a,i)=>{
-      const option=document.createElement('option');option.value=String(i);
-      option.textContent=a.name+'（'+(state.owned.includes(i)?'所持':'未所持')+'）';
-      target.append(option);
-    });
+    newOne.textContent=enemy?'新しい敵として作る':'新しい味方として作る';target.append(newOne);
+    if(enemy){
+      state.customEnemies.forEach((character,n)=>{
+        const option=document.createElement('option');option.value=String(enemies.length+n);
+        option.textContent=character.name+'（自作敵）';target.append(option);
+      });
+    }else{
+      allies().forEach((a,i)=>{
+        const option=document.createElement('option');option.value=String(i);
+        option.textContent=a.name+'（'+(i>=15?'自作味方':'既存の味方')+'）';target.append(option);
+      });
+    }
     target.value=[...target.options].some(o=>o.value===selected)?selected:'new';
+    $('importName').disabled=target.value!=='new';
+    if(target.value!=='new'){
+      $('importName').value=enemy?state.customEnemies[Number(target.value)-enemies.length]?.name||'':
+        allies()[Number(target.value)]?.name||'';
+    }else if(!$('importName').value.trim()){
+      $('importName').value=enemy?'敵キャラ'+(state.customEnemies.length+1):
+        'バディ'+(state.customChars.length+1);
+    }
   }
+  function showImport(side) {
+    importSide=side;
+    (side==='enemy'?$('enemyImportHost'):$('allyImportHost')).append($('importPanel'));
+    $('importHeading').textContent=side==='enemy'?'手描き画像を自作の敵に設定':
+      '手描き画像を味方に設定';
+    $('importTarget').value='new';$('importName').value='';
+    refreshImportTargets();
+  }
+  $('importTarget').onchange=()=>{
+    $('importName').value='';refreshImportTargets();
+  };
   function refreshPaintTargets() {
     const target=$('paintTarget'),selected=target.value,enemy=$('paintSide').value==='enemy';
     target.replaceChildren();
@@ -868,9 +804,17 @@
     const blob=await new Promise(resolve=>$('chromaPreview').toBlob(resolve,'image/png'));
     if(!blob){$('importStatus').textContent='画像処理に失敗しました。';return;}
     try{
-      const index=await saveCharacterArt(blob,$('allyTarget').value);
-      $('importStatus').textContent=allies()[index].name+'の手描き画像を保存しました。';
-      renderSquad();
+      const target=$('importTarget').value,name=$('importName').value;
+      if(importSide==='enemy'){
+        const index=await saveCustomEnemyArt(blob,target,name);
+        $('importTarget').value=String(index);refreshImportTargets();
+        $('importStatus').textContent=enemyName(index)+'の敵画像を保存しました。';
+      }else{
+        const index=await saveCharacterArt(blob,target,name);
+        $('importTarget').value=String(index);refreshImportTargets();
+        $('importStatus').textContent=allies()[index].name+'の味方画像を保存しました。';
+        renderSquad();renderCustomAllies();
+      }
     }catch{
       $('importStatus').textContent='画像を保存できませんでした。ブラウザの空き容量を確認してください。';
     }
@@ -883,7 +827,7 @@
     if(!Number.isInteger(index)||index<0||index>=allies().length+(isNew?1:0))
       throw new Error('適用先が不正');
     await putArt('ally:'+index,blob);
-    if(isNew&&createCharacter(true,requestedName)===null){
+    if(isNew&&createCharacter(requestedName)===null){
       await removeArt('ally:'+index);throw new Error('キャラを保存できませんでした');
     }
     return index;
@@ -908,7 +852,7 @@
       }
       renderStageBuilder();
     }
-    refreshPaintTargets();renderCustomEnemies();renderStages();
+    refreshImportTargets();refreshPaintTargets();renderCustomEnemies();renderStages();
     return index;
   }
 
@@ -1137,7 +1081,6 @@
       $('paintStatus').textContent=error.message||'画像を保存できませんでした。端末の空き容量を確認してください。';
     }
   };
-  $('openPaint').onclick=()=>page('paint');
   $('saveNow').onclick=()=>{
     $('localSaveStatus').textContent=save()?
       'ゲームデータをこの端末に保存しました。絵は描画・設定時に別途保存されます。':
@@ -1317,7 +1260,7 @@
     const hop=u.staggerLeft>0?17*Math.abs(Math.sin(2*Math.PI*phase)):0;
     const tilt=u.staggerLeft>0?(u.ally?-1:1)*.27*Math.sin(2*Math.PI*phase):0;
     const lunge=u.attackAnim>0?(u.ally?1:-1)*8*Math.sin(Math.PI*u.attackAnim/.24):0;
-    // Scale units, shadows and HP bars together, anchored to the ground.
+    // Scale sprites with the world while keeping HP numbers readable at full zoom-out.
     ctx.save();ctx.translate(x,GROUND);ctx.scale(scale,scale);
     ctx.fillStyle='#13253a88';ctx.beginPath();
     ctx.ellipse(0,2,size*.32,7,0,0,Math.PI*2);ctx.fill();
@@ -1342,11 +1285,26 @@
       ctx.lineTo(side*(size*.6+8),-size*.72);ctx.stroke();
     }
     ctx.restore();
-    const barWidth=Math.max(42,size*.8),barY=-size-26-hop;
-    ctx.fillStyle='#101c30';ctx.fillRect(-barWidth/2,barY,barWidth,6);
-    ctx.fillStyle=u.ally?'#7eeab3':'#ff8f95';
-    ctx.fillRect(-barWidth/2,barY,barWidth*Math.max(0,u.hp/u.max),6);
     ctx.restore();
+    const mode=state.hpDisplay;
+    if(mode==='none')return;
+    const barY=GROUND-(size+26+hop)*scale;
+    if(mode==='bar'||mode==='both'){
+      const width=Math.max(36,Math.max(42,size*.8)*scale);
+      ctx.fillStyle='#101c30';ctx.fillRect(x-width/2,barY,width,6);
+      ctx.fillStyle=u.ally?'#7eeab3':'#ff8f95';
+      ctx.fillRect(x-width/2,barY,width*Math.max(0,u.hp/u.max),6);
+    }
+    if(mode==='number'||mode==='both'){
+      const label=Math.max(0,Math.ceil(u.hp))+'/'+Math.max(1,Math.ceil(u.max));
+      // The canvas shrinks on phones, so compensate to keep digits legible in CSS pixels.
+      const fontSize=Math.max(13,Math.min(34,Math.round(12*canvas.width/Math.max(1,canvas.clientWidth))));
+      ctx.save();ctx.font='bold '+fontSize+'px sans-serif';ctx.textAlign='center';
+      ctx.lineWidth=Math.max(3,fontSize*.24);ctx.strokeStyle='#101c30';
+      const y=barY-6;
+      ctx.strokeText(label,x,y);ctx.fillStyle='#fff';ctx.fillText(label,x,y);
+      ctx.restore();
+    }
   }
   function draw() {
     const b=battle;if(!b)return;
@@ -1435,7 +1393,7 @@
     else if(e.code==='ArrowLeft'||e.code==='KeyA')camera=clampCamera(camera-120);
     else if(e.code==='ArrowRight'||e.code==='KeyD')camera=clampCamera(camera+120);
   });
-  wallet();renderStages();renderSquad();renderRoster();refreshAllyTargets();
+  wallet();renderStages();renderSquad();renderRoster();refreshImportTargets();
   // The first online visit caches only our own game code for later offline visits.
   if(typeof navigator!=='undefined'&&'serviceWorker' in navigator&&
       typeof location!=='undefined'&&location.protocol==='https:'){
