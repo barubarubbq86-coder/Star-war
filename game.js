@@ -13,6 +13,29 @@
     {name:'範囲',hp:160,atk:33,speed:82,range:90,cost:230,interval:1.6,area:true},
     {name:'重量',hp:510,atk:76,speed:60,range:48,cost:370,interval:2.1}
   ];
+  // Keep custom stats bounded so a mistyped value cannot break battle math.
+  const statRules={
+    hp:[30,3000],atk:[1,400],speed:[20,260],range:[20,320],
+    cost:[30,1500],interval:[.25,5],cooldown:[.5,20]
+  };
+  const statKeys=Object.keys(statRules);
+  function presetStats(role) {
+    const r=roles[Number.isInteger(role)&&roles[role]?role:0];
+    return {hp:r.hp,atk:r.atk,speed:r.speed,range:r.range,cost:r.cost,
+      interval:r.interval,cooldown:Math.round(Math.max(2,2.2+r.cost/190)*10)/10,
+      area:!!r.area};
+  }
+  function normalizedStats(raw,role) {
+    const preset=presetStats(role),result={};
+    for(const key of statKeys){
+      const value=raw&&raw[key]!==''&&raw[key]!=null?Number(raw[key]):NaN;
+      const [min,max]=statRules[key];
+      const bounded=Number.isFinite(value)?Math.max(min,Math.min(max,value)):preset[key];
+      result[key]=key==='interval'||key==='cooldown'?Math.round(bounded*100)/100:Math.round(bounded);
+    }
+    result.area=typeof raw?.area==='boolean'?raw.area:preset.area;
+    return result;
+  }
   const baseAllies = names.map((name,i) => ({
     name,hp:90+i*30,atk:13+i*7,speed:80+(i%4)*16,
     range:40+(i%5)*22,cost:60+i*38,rarity:Math.min(3,Math.floor(i/4)),
@@ -48,7 +71,7 @@
   ].map(([name,diff,pool,boss],theme) => ({name,diff,pool,boss,theme:theme%6}));
   const stateKey = 'starlingSiege';
   const fresh = () => ({
-    version:3,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
+    version:4,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
     plus:Array(35).fill(0),owned:[0,1,2,3,4],deck:[0,1,2,3,4],
     customChars:[],customStages:[],enemyNames:{},lastLogin:''
   });
@@ -74,7 +97,11 @@
     });
     state.version=3;
   }
-  state.customChars=Array.isArray(state.customChars)?state.customChars.slice(0,20):[];
+  state.version=4;
+  state.customChars=Array.isArray(state.customChars)?state.customChars.slice(0,20).map(raw=>{
+    const s=raw&&typeof raw==='object'?raw:{};
+    return {...s,stats:normalizedStats(s.stats,s.role)};
+  }):[];
   state.customStages=Array.isArray(state.customStages)?state.customStages.slice(0,20):[];
   state.owned=Array.isArray(state.owned)?[...new Set(state.owned.filter(n=>Number.isInteger(n)&&n>=0&&n<15+state.customChars.length))]:[0,1,2,3,4];
   if (!state.owned.length) state.owned=[0];
@@ -101,7 +128,8 @@
   function allies() {
     return baseAllies.concat(state.customChars.map(s => {
       const r=roles[Number.isInteger(s.role)&&roles[s.role]?s.role:0];
-      return {...r,name:s.name||'バディ',rarity:1,color:color[s.color%6]||color[0],legacyImage:s.image||''};
+      return {...r,...normalizedStats(s.stats,s.role),name:s.name||'バディ',rarity:1,
+        color:color[s.color%6]||color[0],legacyImage:s.image||''};
     }));
   }
   function stages() { return baseStages.concat(state.customStages); }
@@ -145,7 +173,7 @@
       $('enemyImportStatus').textContent='この端末に保存済みの敵画像：'+enemies.filter(e=>art.has('enemy:'+e.id)).length+' / 20枚';
       const draft=art.get('paint:draft');
       if(draft){
-        const restore=()=>paintContext.drawImage(draft,0,0,512,512);
+        const restore=()=>{if(!paintTouched)paintContext.drawImage(draft,0,0,512,512);};
         if(imageReady(draft))restore();
         else draft.addEventListener('load',restore,{once:true});
       }
@@ -269,7 +297,9 @@
         card.append(swatch);
       }
       const title=document.createElement('h3');title.textContent=a.name+' Lv.'+lv+' +'+(state.plus[i]||0);
-      const details=document.createElement('p');details.textContent='HP '+a.hp+' / 攻撃 '+a.atk+' / '+rarity[a.rarity];
+      const details=document.createElement('p');
+      details.textContent='HP '+a.hp+' / 攻撃 '+a.atk+' / 速さ '+a.speed+
+        ' / 射程 '+a.range+' / '+rarity[a.rarity];
       const equip=document.createElement('button');equip.textContent=state.deck.includes(i)?'編成から外す':'編成に入れる';
       equip.onclick=()=>{
         if (state.deck.includes(i)) {if(state.deck.length>1)state.deck=state.deck.filter(n=>n!==i);}
@@ -281,7 +311,16 @@
       upgrade.onclick=()=>{
         if(state.xp>=cost&&lv<30){state.xp-=cost;state.levels[i]=lv+1;save();renderSquad();}
       };
-      card.append(title,details,equip,upgrade);wrap.append(card);
+      card.append(title,details,equip,upgrade);
+      if(i>=15){
+        const edit=document.createElement('button');edit.textContent='能力を編集';
+        edit.onclick=()=>{
+          page('workshop');selectTab('character');
+          $('editCharacter').value=String(i);loadCharacterEditor();
+        };
+        card.append(edit);
+      }
+      wrap.append(card);
     });
   }
   function renderRoster() {
@@ -378,6 +417,9 @@
   $('pull30').onclick=()=>pull(false);$('pull100').onclick=()=>pull(true);
 
   const cp={head:0,body:0,mark:0,color:0,role:0};
+  let editorStats=presetStats(0);
+  const statFields={hp:'statHp',atk:'statAtk',speed:'statSpeed',range:'statRange',
+    cost:'statCost',interval:'statInterval',cooldown:'statCooldown'};
   const options={
     head:['まる','トゲ','しかく','耳','王冠'],body:['まる','しかく','たて長','よこ長'],
     mark:['★','○','Z','V','☾','なし'],color:['夕日','若葉','空','桜','土','炎'],
@@ -393,33 +435,95 @@
     const right=document.createElement('button');right.textContent='▶';right.onclick=forward;
     row.append(left,middle,right);el.append(l,row);parent.append(el);
   }
+  function readEditorStats() {
+    const raw={area:$('statArea').checked};
+    for(const [key,id] of Object.entries(statFields))raw[key]=$(id).value;
+    editorStats=normalizedStats(raw,cp.role);
+    for(const [key,id] of Object.entries(statFields))$(id).value=String(editorStats[key]);
+    return {...editorStats};
+  }
+  function showEditorStats() {
+    const s=editorStats;
+    $('roleStats').textContent='HP '+s.hp+'　攻撃 '+s.atk+'　速さ '+s.speed+
+      '　射程 '+s.range+'　費用 '+s.cost+'円　攻撃間隔 '+s.interval+
+      '秒　生産間隔 '+s.cooldown+'秒'+(s.area?'　範囲攻撃':'');
+  }
   function renderChar() {
     const wrap=$('partControls');wrap.replaceChildren();
     for (const key of Object.keys(options)) {
       stepper(wrap,labels[key],options[key][cp[key]],
-        ()=>{cp[key]=(cp[key]-1+options[key].length)%options[key].length;renderChar();},
-        ()=>{cp[key]=(cp[key]+1)%options[key].length;renderChar();});
+        ()=>{readEditorStats();cp[key]=(cp[key]-1+options[key].length)%options[key].length;
+          if(key==='role')editorStats=presetStats(cp.role);renderChar();},
+        ()=>{readEditorStats();cp[key]=(cp[key]+1)%options[key].length;
+          if(key==='role')editorStats=presetStats(cp.role);renderChar();});
     }
     const creature=$('creaturePreview');
     creature.className='custom-creature '+(['','square','tall','wide'][cp.body]||'')+(cp.head===3?' ears':'');
     creature.style.background=color[cp.color];
     creature.querySelector('.mark').textContent=cp.mark===5?'':options.mark[cp.mark];
-    const r=roles[cp.role];
-    $('roleStats').textContent='HP '+r.hp+'　攻撃 '+r.atk+'　速さ '+r.speed+'　射程 '+r.range;
+    for(const [key,id] of Object.entries(statFields))$(id).value=String(editorStats[key]);
+    $('statArea').checked=editorStats.area;
+    showEditorStats();
     refreshAllyTargets();
   }
-  function createCharacter() {
-    if(state.customChars.length>=20){$('importStatus').textContent='自作キャラは20体までです';return null;}
+  function refreshCharacterList() {
+    const select=$('editCharacter'),selected=select.value;select.replaceChildren();
+    const newer=document.createElement('option');newer.value='new';
+    newer.textContent='新しいキャラを作る';select.append(newer);
+    state.customChars.forEach((s,n)=>{
+      const option=document.createElement('option');option.value=String(15+n);
+      option.textContent=(s.name||'バディ'+(n+1))+'（自作'+(n+1)+'）';select.append(option);
+    });
+    select.value=[...select.options].some(o=>o.value===selected)?selected:'new';
+    $('createChar').textContent=select.value==='new'?'このキャラを端末に保存':'このキャラの変更を保存';
+  }
+  function loadCharacterEditor() {
+    const index=Number($('editCharacter').value)-15;
+    const s=$('editCharacter').value==='new'?null:state.customChars[index];
+    for(const key of Object.keys(cp)){
+      const value=s?.[key];cp[key]=Number.isInteger(value)&&value>=0&&value<options[key].length?value:0;
+    }
+    editorStats=s?normalizedStats(s.stats,cp.role):presetStats(0);
+    $('customName').value=s?.name||'バディ'+(state.customChars.length+1);
+    $('createChar').textContent=s?'このキャラの変更を保存':'このキャラを端末に保存';
+    $('charStatus').textContent='';
+    renderChar();
+  }
+  for(const id of Object.values(statFields)){
+    $(id).onchange=()=>{readEditorStats();showEditorStats();};
+  }
+  $('statArea').onchange=()=>{readEditorStats();showEditorStats();};
+  $('editCharacter').onchange=loadCharacterEditor;
+  function createCharacter(fromArt=false) {
+    if(state.customChars.length>=20){$('charStatus').textContent='自作キャラは20体までです';return null;}
     const number=state.customChars.length,idx=15+number;
-    state.customChars.push({...cp,name:'バディ'+(number+1)});
+    const name=fromArt&&$('editCharacter').value!=='new'?'バディ'+(number+1):
+      $('customName').value.trim().slice(0,24)||'バディ'+(number+1);
+    state.customChars.push({...cp,name,stats:readEditorStats()});
     state.owned.push(idx);
     if(state.deck.length<8)state.deck.push(idx);
-    save();refreshAllyTargets();
+    const persisted=save();refreshAllyTargets();refreshCharacterList();
+    $('editCharacter').value=String(idx);
+    $('createChar').textContent='このキャラの変更を保存';
+    $('charStatus').textContent=persisted?name+'をこの端末に保存しました。':
+      '保存に失敗しました。端末の空き容量を確認してください。';
     return idx;
   }
   $('createChar').onclick=()=>{
-    const i=createCharacter();
-    if(i!==null){log('バディ'+(i-14)+'を作りました');page('squad');}
+    if($('editCharacter').value==='new'){
+      const i=createCharacter();
+      if(i!==null)renderSquad();
+      return;
+    }
+    const slot=Number($('editCharacter').value)-15;
+    if(!Number.isInteger(slot)||!state.customChars[slot])return;
+    const previous=state.customChars[slot];
+    state.customChars[slot]={...previous,...cp,
+      name:$('customName').value.trim().slice(0,24)||'バディ'+(slot+1),
+      stats:readEditorStats()};
+    if(save())$('charStatus').textContent=state.customChars[slot].name+'の変更をこの端末に保存しました。';
+    else $('charStatus').textContent='保存に失敗しました。端末の空き容量を確認してください。';
+    refreshCharacterList();refreshAllyTargets();renderSquad();
   };
 
   const sp={difficulty:0,boss:15,theme:0,pool:[0,1,2]};
@@ -465,7 +569,7 @@
   }
   $('charTab').onclick=()=>selectTab('character');
   $('stageTab').onclick=()=>selectTab('stage');
-  renderChar();renderStageBuilder();
+  refreshCharacterList();renderChar();renderStageBuilder();
 
   function refreshAllyTargets() {
     for(const target of [$('allyTarget'),$('paintTarget')]){
@@ -581,22 +685,24 @@
     if(!Number.isInteger(index)||index<0||index>=allies().length+(isNew?1:0))
       throw new Error('適用先が不正');
     await putArt('ally:'+index,blob);
-    if(isNew)createCharacter();
+    if(isNew)createCharacter(true);
     return index;
   }
 
-  // One-sheet drawing desk: pen, eraser, palette, history, and a transparent canvas.
+  // One-sheet drawing desk: pen, eraser, contiguous fill, history, and local draft.
   const paintCanvas=$('paintCanvas'),paintContext=paintCanvas.getContext('2d',{willReadFrequently:true});
   const paintColors=['#222b36','#f8f7ed','#ec515e','#ffb347','#f8dc58','#63c489','#51a5e6','#9a73c8'];
-  let paintColor=paintColors[0],tool='pen',stroke=null,draftTimer=0;
+  let paintColor=paintColors[0],tool='pen',stroke=null,draftTimer=0,paintTouched=false;
   const undoHistory=[],redoHistory=[];
   function paintControls(){
     $('undoPaint').disabled=undoHistory.length===0;
     $('redoPaint').disabled=redoHistory.length===0;
     $('penTool').classList.toggle('active',tool==='pen');
     $('eraserTool').classList.toggle('active',tool==='eraser');
+    $('fillTool').classList.toggle('active',tool==='fill');
     $('penTool').setAttribute('aria-pressed',String(tool==='pen'));
     $('eraserTool').setAttribute('aria-pressed',String(tool==='eraser'));
+    $('fillTool').setAttribute('aria-pressed',String(tool==='fill'));
     [...$('paintPalette').children].forEach(b=>b.classList.toggle('active',b.dataset.paint===paintColor));
   }
   function remember(){
@@ -607,9 +713,18 @@
   function saveDraftSoon(){
     clearTimeout(draftTimer);
     draftTimer=setTimeout(()=>{
-      if(!database)return;
-      paintCanvas.toBlob(blob=>{if(blob)putArt('paint:draft',blob).catch(()=>{});},'image/png');
+      saveDraftNow(true).catch(()=>{
+        $('paintStatus').textContent='下書きを保存できませんでした。端末の空き容量を確認してください。';
+      });
     },350);
+  }
+  async function saveDraftNow(silent=false){
+    await artReady;
+    if(!database)throw new Error('画像保存を利用できません');
+    const blob=await new Promise(resolve=>paintCanvas.toBlob(resolve,'image/png'));
+    if(!blob)throw new Error('下書きを画像に変換できません');
+    await putArt('paint:draft',blob);
+    if(!silent)$('paintStatus').textContent='下書きをこの端末に保存しました。';
   }
   function canvasPoint(e){
     const rect=paintCanvas.getBoundingClientRect();
@@ -630,9 +745,48 @@
     }
     paintContext.restore();
   }
+  function fillAt(px,py){
+    const x=Math.floor(px),y=Math.floor(py),w=512,h=512;
+    if(x<0||x>=w||y<0||y>=h)return false;
+    const image=paintContext.getImageData(0,0,w,h),data=image.data;
+    const start=y*w+x,p=start*4;
+    const target=[data[p],data[p+1],data[p+2],data[p+3]];
+    const rgb=[1,3,5].map(offset=>parseInt(paintColor.slice(offset,offset+2),16));
+    if(target[3]===255&&rgb.every((v,i)=>v===target[i]))return false;
+    const tolerance=18,n=w*h,seen=new Uint8Array(n),queue=new Int32Array(n);
+    let head=0,tail=0;
+    function matches(pos){
+      const q=pos*4;
+      if(target[3]<=tolerance)return data[q+3]<=tolerance;
+      return Math.abs(data[q+3]-target[3])<=tolerance&&
+        Math.abs(data[q]-target[0])<=tolerance&&
+        Math.abs(data[q+1]-target[1])<=tolerance&&
+        Math.abs(data[q+2]-target[2])<=tolerance;
+    }
+    function add(pos){
+      if(seen[pos]||!matches(pos))return;
+      seen[pos]=1;queue[tail++]=pos;
+    }
+    add(start);
+    while(head<tail){
+      const pos=queue[head++],q=pos*4,cx=pos%w;
+      data[q]=rgb[0];data[q+1]=rgb[1];data[q+2]=rgb[2];data[q+3]=255;
+      if(cx>0)add(pos-1);
+      if(cx<w-1)add(pos+1);
+      if(pos>=w)add(pos-w);
+      if(pos<n-w)add(pos+w);
+    }
+    if(!tail)return false;
+    remember();paintContext.putImageData(image,0,0);paintTouched=true;
+    saveDraftSoon();
+    return true;
+  }
   paintCanvas.onpointerdown=e=>{
-    e.preventDefault();paintCanvas.setPointerCapture(e.pointerId);
-    remember();const point=canvasPoint(e);stroke={id:e.pointerId,last:point};
+    e.preventDefault();
+    const point=canvasPoint(e);
+    if(tool==='fill'){fillAt(point.x,point.y);return;}
+    paintCanvas.setPointerCapture(e.pointerId);paintTouched=true;
+    remember();stroke={id:e.pointerId,last:point};
     paintLine(point,point,e.pointerType==='pen'?Math.max(.45,e.pressure):1);
   };
   paintCanvas.onpointermove=e=>{
@@ -648,6 +802,11 @@
   paintCanvas.onpointerup=stopStroke;paintCanvas.onpointercancel=stopStroke;
   $('penTool').onclick=()=>{tool='pen';paintControls();};
   $('eraserTool').onclick=()=>{tool='eraser';paintControls();};
+  $('fillTool').onclick=()=>{tool='fill';paintControls();};
+  $('saveDraft').onclick=async()=>{
+    try{await saveDraftNow();}
+    catch{$('paintStatus').textContent='下書きを保存できませんでした。端末の空き容量を確認してください。';}
+  };
   $('brushSize').oninput=()=>$('brushValue').textContent=$('brushSize').value;
   $('undoPaint').onclick=()=>{
     if(!undoHistory.length)return;
@@ -663,17 +822,19 @@
   };
   $('clearPaint').onclick=()=>{
     if(!confirm('キャンバスの絵を全部消しますか？'))return;
-    remember();paintContext.clearRect(0,0,512,512);saveDraftSoon();
+    remember();paintTouched=true;paintContext.clearRect(0,0,512,512);saveDraftSoon();
   };
   const palette=$('paintPalette');
   paintColors.forEach(value=>{
     const button=document.createElement('button');button.className='paint-swatch';
     button.dataset.paint=value;button.style.background=value;button.title='色 '+value;
     button.setAttribute('aria-label','色 '+value);
-    button.onclick=()=>{paintColor=value;tool='pen';$('customColor').value=value;paintControls();};
+    button.onclick=()=>{paintColor=value;if(tool==='eraser')tool='pen';
+      $('customColor').value=value;paintControls();};
     palette.append(button);
   });
-  $('customColor').oninput=e=>{paintColor=e.target.value;tool='pen';paintControls();};
+  $('customColor').oninput=e=>{paintColor=e.target.value;
+    if(tool==='eraser')tool='pen';paintControls();};
   function paintedBlob(){
     const data=paintContext.getImageData(0,0,512,512).data;
     let minX=512,minY=512,maxX=-1,maxY=-1;
@@ -702,6 +863,11 @@
     }
   };
   $('openPaint').onclick=()=>page('paint');
+  $('saveNow').onclick=()=>{
+    $('localSaveStatus').textContent=save()?
+      'ゲームデータをこの端末に保存しました。絵は描画・設定時に別途保存されます。':
+      '保存に失敗しました。端末の空き容量を確認してください。';
+  };
   paintControls();
 
   // Battle: 2200-unit world, with a drag-controlled 1100-unit camera.
@@ -738,7 +904,7 @@
     if(!battle||battle.result)return;
     const a=allies()[i];if(!a||battle.money<a.cost||battle.cool[slot]>0)return;
     battle.money-=a.cost;
-    battle.cool[slot]=Math.max(2,2.2+a.cost/190);
+    battle.cool[slot]=a.cooldown??Math.max(2,2.2+a.cost/190);
     const level=(state.levels[i]||1)+(state.plus[i]||0)-1;
     const max=Math.round(a.hp*(1+.085*level));
     battle.units.push({
