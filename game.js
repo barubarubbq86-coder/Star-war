@@ -299,7 +299,7 @@
       const title=document.createElement('h3');title.textContent=a.name+' Lv.'+lv+' +'+(state.plus[i]||0);
       const details=document.createElement('p');
       details.textContent='HP '+a.hp+' / 攻撃 '+a.atk+' / 速さ '+a.speed+
-        ' / 射程 '+a.range+' / '+rarity[a.rarity];
+        ' / 射程 '+a.range+' / コスト '+a.cost+'円 / '+rarity[a.rarity];
       const equip=document.createElement('button');equip.textContent=state.deck.includes(i)?'編成から外す':'編成に入れる';
       equip.onclick=()=>{
         if (state.deck.includes(i)) {if(state.deck.length>1)state.deck=state.deck.filter(n=>n!==i);}
@@ -870,13 +870,30 @@
   };
   paintControls();
 
-  // Battle: 2200-unit world, with a drag-controlled 1100-unit camera.
+  // Battle: the camera can show the full 2200-unit world or zoom in twice as far.
   const canvas=$('game'),ctx=canvas.getContext('2d');
-  const WORLD=2200,VIEW=1100,GROUND=412,STAGGER_TIME=.74;
-  let battle=null,frame=0,last=0,camera=0,drag=null;
+  const WORLD=2200,BASE_VIEW=1100,MIN_VIEW=550,GROUND=412,STAGGER_TIME=.74;
+  let battle=null,frame=0,last=0,camera=0,viewWidth=BASE_VIEW,drag=null,pinch=null;
+  const pointers=new Map();
+  function clampCamera(value,width=viewWidth) {
+    return Math.max(0,Math.min(WORLD-width,value));
+  }
+  function updateZoomLabel() {
+    $('zoomLabel').textContent='表示 '+Math.round(BASE_VIEW/viewWidth*100)+'%';
+  }
+  function setViewWidth(width,fraction=.5) {
+    const focus=camera+viewWidth*fraction;
+    viewWidth=Math.max(MIN_VIEW,Math.min(WORLD,width));
+    camera=clampCamera(focus-viewWidth*fraction);
+    updateZoomLabel();
+  }
+  $('zoomOut').onclick=()=>setViewWidth(viewWidth*1.25);
+  $('zoomIn').onclick=()=>setViewWidth(viewWidth/1.25);
+  $('zoomFit').onclick=()=>setViewWidth(WORLD);
   function startBattle(index) {
     const stage=stages()[index];if(!stage||index>state.cleared)return;
-    cancelAnimationFrame(frame);camera=0;
+    cancelAnimationFrame(frame);camera=0;viewWidth=BASE_VIEW;
+    pointers.clear();drag=null;pinch=null;updateZoomLabel();
     battle={
       index,stage,money:150,cap:1000,worker:1,home:1250,homeMax:1250,
       enemy:Math.round(900*stage.diff),enemyMax:Math.round(900*stage.diff),
@@ -1003,19 +1020,20 @@
   }
   function imageReady(img){return img&&img.complete&&img.naturalWidth>0;}
   function renderCastle(x,hp,max,label,tint) {
-    const px=(x-camera)*canvas.width/VIEW;
+    const px=(x-camera)*canvas.width/viewWidth,scale=BASE_VIEW/viewWidth;
     if(px<-90||px>canvas.width+90)return;
-    ctx.fillStyle=tint;ctx.fillRect(px-34,GROUND-103,68,103);
+    ctx.save();ctx.translate(px,GROUND);ctx.scale(scale,scale);
+    ctx.fillStyle=tint;ctx.fillRect(-34,-103,68,103);
     ctx.fillStyle='#f6d590';
-    ctx.beginPath();ctx.moveTo(px-42,GROUND-103);ctx.lineTo(px,GROUND-140);
-    ctx.lineTo(px+42,GROUND-103);ctx.fill();
-    ctx.fillStyle='#182c45';ctx.fillRect(px-42,GROUND-164,84,9);
-    ctx.fillStyle='#78e7b2';ctx.fillRect(px-42,GROUND-164,84*Math.max(0,hp/max),9);
+    ctx.beginPath();ctx.moveTo(-42,-103);ctx.lineTo(0,-140);
+    ctx.lineTo(42,-103);ctx.fill();
+    ctx.fillStyle='#182c45';ctx.fillRect(-42,-164,84,9);
+    ctx.fillStyle='#78e7b2';ctx.fillRect(-42,-164,84*Math.max(0,hp/max),9);
     ctx.fillStyle='#fff';ctx.font='16px sans-serif';
-    ctx.fillText(label,px-40,GROUND-177);
+    ctx.fillText(label,-40,-177);ctx.restore();
   }
   function renderActor(u) {
-    const x=(u.x-camera)*canvas.width/VIEW,baseY=GROUND;
+    const x=(u.x-camera)*canvas.width/viewWidth,scale=BASE_VIEW/viewWidth;
     if(x<-100||x>canvas.width+100)return;
     const size=u.ally?(u.a.hp>=450?76:58):u.a.size;
     const img=u.ally?allyArt(u.allyId):enemyArt(u.enemyId);
@@ -1024,9 +1042,11 @@
     const hop=u.staggerLeft>0?17*Math.abs(Math.sin(2*Math.PI*phase)):0;
     const tilt=u.staggerLeft>0?(u.ally?-1:1)*.27*Math.sin(2*Math.PI*phase):0;
     const lunge=u.attackAnim>0?(u.ally?1:-1)*8*Math.sin(Math.PI*u.attackAnim/.24):0;
+    // Scale units, shadows and HP bars together, anchored to the ground.
+    ctx.save();ctx.translate(x,GROUND);ctx.scale(scale,scale);
     ctx.fillStyle='#13253a88';ctx.beginPath();
-    ctx.ellipse(x,baseY+2,size*.32,7,0,0,Math.PI*2);ctx.fill();
-    ctx.save();ctx.translate(x+lunge,baseY-hop);ctx.rotate(tilt);
+    ctx.ellipse(0,2,size*.32,7,0,0,Math.PI*2);ctx.fill();
+    ctx.save();ctx.translate(lunge,-hop);ctx.rotate(tilt);
     if(imageReady(img)){
       const ratio=img.naturalWidth/img.naturalHeight;
       const h=size,w=Math.min(size*1.25,size*ratio);
@@ -1047,10 +1067,11 @@
       ctx.lineTo(side*(size*.6+8),-size*.72);ctx.stroke();
     }
     ctx.restore();
-    const barWidth=Math.max(42,size*.8),barY=baseY-size-26-hop;
-    ctx.fillStyle='#101c30';ctx.fillRect(x-barWidth/2,barY,barWidth,6);
+    const barWidth=Math.max(42,size*.8),barY=-size-26-hop;
+    ctx.fillStyle='#101c30';ctx.fillRect(-barWidth/2,barY,barWidth,6);
     ctx.fillStyle=u.ally?'#7eeab3':'#ff8f95';
-    ctx.fillRect(x-barWidth/2,barY,barWidth*Math.max(0,u.hp/u.max),6);
+    ctx.fillRect(-barWidth/2,barY,barWidth*Math.max(0,u.hp/u.max),6);
+    ctx.restore();
   }
   function draw() {
     const b=battle;if(!b)return;
@@ -1088,20 +1109,56 @@
     update(dt);draw();
     frame=requestAnimationFrame(loop);
   }
-  canvas.onpointerdown=e=>{drag={x:e.clientX,camera};canvas.setPointerCapture(e.pointerId);};
-  canvas.onpointermove=e=>{
-    if(drag)camera=Math.max(0,Math.min(WORLD-VIEW,drag.camera-(e.clientX-drag.x)*VIEW/canvas.clientWidth));
+  function startPinch() {
+    const pair=[...pointers.entries()].slice(0,2),a=pair[0][1],b=pair[1][1];
+    const bounds=canvas.getBoundingClientRect();
+    const fraction=Math.max(0,Math.min(1,((a.x+b.x)/2-bounds.left)/bounds.width));
+    pinch={ids:pair.map(entry=>entry[0]),distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),
+      view:viewWidth,focus:camera+viewWidth*fraction};
+    drag=null;
+  }
+  canvas.onpointerdown=e=>{
+    e.preventDefault();
+    pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    canvas.setPointerCapture(e.pointerId);
+    if(pointers.size===1){drag={id:e.pointerId,x:e.clientX,camera};pinch=null;}
+    else if(pointers.size===2)startPinch();
   };
-  canvas.onpointerup=()=>{drag=null;};
-  canvas.onpointercancel=()=>{drag=null;};
+  canvas.onpointermove=e=>{
+    if(!pointers.has(e.pointerId))return;
+    e.preventDefault();pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pointers.size>=2){
+      if(!pinch||pinch.ids.some(id=>!pointers.has(id)))startPinch();
+      const [a,b]=pinch.ids.map(id=>pointers.get(id));
+      const distance=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y));
+      const bounds=canvas.getBoundingClientRect();
+      const fraction=Math.max(0,Math.min(1,((a.x+b.x)/2-bounds.left)/bounds.width));
+      // Requested gesture: spreading fingers reveals more of the battlefield.
+      viewWidth=Math.max(MIN_VIEW,Math.min(WORLD,pinch.view*distance/pinch.distance));
+      camera=clampCamera(pinch.focus-viewWidth*fraction);
+      updateZoomLabel();
+    }else if(drag&&drag.id===e.pointerId){
+      camera=clampCamera(drag.camera-(e.clientX-drag.x)*viewWidth/canvas.clientWidth);
+    }
+  };
+  function endPointer(e) {
+    pointers.delete(e.pointerId);pinch=null;
+    if(pointers.size>=2)startPinch();
+    else if(pointers.size===1){
+      const [id,point]=pointers.entries().next().value;
+      drag={id,x:point.x,camera};
+    }else drag=null;
+  }
+  canvas.onpointerup=endPointer;
+  canvas.onpointercancel=endPointer;
   document.addEventListener('keydown',e=>{
     if(!battle||document.activeElement?.matches('input'))return;
     if(e.code.startsWith('Digit')){
       const slot=Number(e.code.slice(-1))-1;
       if(slot>=0&&slot<state.deck.length)spawnAlly(state.deck[slot],slot);
     }else if(e.code==='KeyW')$('worker').click();
-    else if(e.code==='ArrowLeft'||e.code==='KeyA')camera=Math.max(0,camera-120);
-    else if(e.code==='ArrowRight'||e.code==='KeyD')camera=Math.min(WORLD-VIEW,camera+120);
+    else if(e.code==='ArrowLeft'||e.code==='KeyA')camera=clampCamera(camera-120);
+    else if(e.code==='ArrowRight'||e.code==='KeyD')camera=clampCamera(camera+120);
   });
   wallet();renderStages();renderSquad();renderRoster();refreshAllyTargets();
   // The first online visit caches only our own game code for later offline visits.
