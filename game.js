@@ -13,9 +13,10 @@
     {name:'範囲',hp:160,atk:33,speed:82,range:90,cost:230,interval:1.6,area:true},
     {name:'重量',hp:510,atk:76,speed:60,range:48,cost:370,interval:2.1}
   ];
-  // Keep custom stats bounded so a mistyped value cannot break battle math.
+  // HP, attack and speed have no gameplay ceiling. Other stats keep their ranges.
+  // A positive finite number is needed for the browser's battle calculations.
   const statRules={
-    hp:[30,3000],atk:[1,400],speed:[20,260],range:[20,320],
+    hp:[1,Infinity],atk:[1,Infinity],speed:[1,Infinity],range:[20,320],
     cost:[30,1500],interval:[.25,5],cooldown:[.5,20]
   };
   const statKeys=Object.keys(statRules);
@@ -36,7 +37,7 @@
     result.area=typeof raw?.area==='boolean'?raw.area:preset.area;
     return result;
   }
-  const enemyStatRules={hp:[30,5000],atk:[1,600],speed:[20,260],range:[20,320],
+  const enemyStatRules={hp:[1,Infinity],atk:[1,Infinity],speed:[1,Infinity],range:[20,320],
     interval:[.25,5],size:[40,140]};
   const defaultEnemyStats={hp:220,atk:32,speed:83,range:60,interval:1.3,size:65,area:false};
   function normalizedEnemyStats(raw) {
@@ -369,7 +370,8 @@
   function numberEditor(grid,fields,key,label,value,rules) {
     const row=document.createElement('label'),input=document.createElement('input');
     row.textContent=label;input.type='number';input.value=String(value);
-    input.min=String(rules[key][0]);input.max=String(rules[key][1]);
+    input.min=String(rules[key][0]);
+    if(Number.isFinite(rules[key][1]))input.max=String(rules[key][1]);
     input.step=key==='interval'||key==='cooldown'?'0.05':'1';
     row.append(input);grid.append(row);fields[key]=input;
   }
@@ -1141,7 +1143,7 @@
     battle.money-=a.cost;
     battle.cool[slot]=a.cooldown??Math.max(2,2.2+a.cost/190);
     const level=(state.levels[i]||1)+(state.plus[i]||0)-1;
-    const max=Math.round(a.hp*(1+.085*level));
+    const max=Math.round(finiteProduct(a.hp,1+.085*level));
     battle.units.push({
       a,x:105,hp:max,max,ally:true,allyId:i,
       cd:0,hit:0,attackAnim:0,staggerLeft:0,staggerBank:0
@@ -1149,7 +1151,7 @@
   }
   function spawnEnemy(i) {
     const a=allEnemies()[i];if(!a)return;
-    const max=Math.round(a.hp*battle.stage.diff);
+    const max=Math.round(finiteProduct(a.hp,battle.stage.diff));
     battle.units.push({
       a,x:WORLD-105,hp:max,max,ally:false,enemyId:i,
       cd:0,hit:0,attackAnim:0,staggerLeft:0,staggerBank:0
@@ -1164,13 +1166,20 @@
     }
   };
   $('retreat').onclick=()=>endBattle(false);
+  // Saturate multiplication at the largest finite Number so extreme custom
+  // stats still have a usable HP bar, damage value and win/lose result.
+  function finiteProduct(value,factor) {
+    return Math.min(Number.MAX_VALUE,value*factor);
+  }
   function damageUnit(target,amount) {
     const actual=Math.min(target.hp,amount);
     target.hp-=actual;target.hit=.13;
-    target.staggerBank+=actual;
+    target.staggerBank=Math.min(Number.MAX_VALUE,target.staggerBank+actual);
     const threshold=target.max*.2;
-    if(target.hp>0&&target.staggerBank+1e-6>=threshold){
+    const rounding=Math.max(1e-6,threshold*1e-12);
+    if(target.hp>0&&target.staggerBank+rounding>=threshold){
       target.staggerBank%=threshold;
+      if(target.staggerBank+rounding>=threshold)target.staggerBank=0;
       target.staggerLeft=STAGGER_TIME; // Tilt and bounce twice for either team.
     }
   }
@@ -1202,7 +1211,7 @@
         if(u.cd<=0){
           u.cd=u.a.interval||1.1;u.attackAnim=.24;
           const level=u.ally?(state.levels[u.allyId]||1)+(state.plus[u.allyId]||0)-1:0;
-          const power=u.a.atk*(u.ally?1+.085*level:b.stage.diff);
+          const power=finiteProduct(u.a.atk,u.ally?1+.085*level:b.stage.diff);
           if(target){
             const victims=u.a.area?foes.filter(v=>Math.abs(v.x-u.x)<=reach+25):[target];
             victims.forEach(v=>damageUnit(v,power));
