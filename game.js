@@ -1,4 +1,4 @@
-// Starling Siege: Pages edition. Enemy files are imported locally, never hosted.
+// Starling Siege: Phase 1. Optional bundled designs; personal art stays on this device.
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -163,6 +163,36 @@
   state.plus=Array.isArray(state.plus)?state.plus:Array(35).fill(0);
   state.enemyNames=state.enemyNames&&typeof state.enemyNames==='object'?state.enemyNames:{};
 
+  const designs=window.SIEGE_DESIGNS;
+  const designImages=new Map();
+  const designKinds=['ally','enemy','homeCastle','enemyCastle','background'];
+  const appearance=state.appearance&&typeof state.appearance==='object'?state.appearance:{};
+  state.appearance={};
+  for(const kind of designKinds){
+    const choices=designs?.[kind]||[];
+    const value=appearance[kind];
+    state.appearance[kind]=choices.some(c=>c.id===value)?value:'original';
+    const select=$(kind+'Design');
+    for(const c of choices){const option=document.createElement('option');option.value=c.id;option.textContent=c.name;select.append(option);}
+    select.value=state.appearance[kind];
+    select.onchange=()=>{state.appearance[kind]=select.value;designPreview(kind);save();};
+    designPreview(kind);
+  }
+  function designChoice(kind){return designs?.[kind]?.find(c=>c.id===state.appearance[kind]);}
+  function bundledImage(file){
+    if(!file)return null;
+    if(!designImages.has(file)){const img=new Image();img.src='./assets/'+file;designImages.set(file,img);}
+    return designImages.get(file);
+  }
+  function selectedDesign(kind,index=0){
+    const choice=designChoice(kind);
+    return bundledImage(choice?.files?choice.files[index%choice.files.length]:choice?.file);
+  }
+  function designPreview(kind){
+    const image=$(kind+'DesignPreview'),choice=designChoice(kind),file=choice?.file||choice?.files?.[0];
+    image.hidden=!file;if(file)image.src='./assets/'+file;
+    image.alt=choice?.name||'従来の見た目';
+  }
   function save() {
     try { localStorage.setItem(stateKey,JSON.stringify(state)); wallet(); return true; }
     catch { $('homeLog').textContent='保存領域がいっぱいです。端末の空き容量を確認してください。'; return false; }
@@ -204,7 +234,7 @@
   function stages() { return baseStages.concat(state.customStages); }
   function log(message) { $('homeLog').textContent=message; }
   function page(id) {
-    if (battle && id!=='battle') { battle=null;cancelAnimationFrame(frame); }
+    if (battle && id!=='battle') { battle=null;hpLabels.length=0;cancelAnimationFrame(frame); }
     document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('show',el.id===id));
     if (id==='stages') { renderStages();renderStageBuilder(); }
     if (id==='squad') renderSquad();
@@ -290,7 +320,7 @@
   function allyArt(i) {
     const saved=art.get('ally:'+i);
     if (saved) return saved;
-    return i>=15?getImage(state.customChars[i-15]?.image||''):null;
+    return i>=15?getImage(state.customChars[i-15]?.image||''):selectedDesign('ally',i);
   }
   // Twenty deterministic, original creatures keep all stages playable before import.
   function drawEnemyFallback(i) {
@@ -333,9 +363,10 @@
     const image=new Image();image.src=c.toDataURL('image/png');return image;
   }
   function enemyArt(i) {
-    const e=allEnemies()[i];if(!e)return null;
+    const e=i<enemies.length?enemies[i]:state.customEnemies[i-enemies.length];if(!e)return null;
     const saved=art.get('enemy:'+e.id);
     if(saved)return saved;
+    if(i<enemies.length){const design=selectedDesign('enemy',i);if(design)return design;}
     if(!enemyFallbacks.has(i))enemyFallbacks.set(i,drawEnemyFallback(i));
     return enemyFallbacks.get(i);
   }
@@ -1215,12 +1246,26 @@
   const canvas=$('game'),ctx=canvas.getContext('2d');
   const WORLD=2200,BASE_VIEW=1100,MIN_VIEW=550,GROUND=412,STAGGER_TIME=.74;
   let battle=null,frame=0,last=0,camera=0,viewWidth=BASE_VIEW,drag=null,pinch=null;
+  let accumulator=0,canvasCssWidth=960;
+  const STEP=1/60,MAX_CATCHUP=.5,MAX_STEPS=30;
+  const moneyLabel=$('battleMoney'),castleLabel=$('battleHp'),statusLabel=$('battleStatus'),zoomLabel=$('zoomLabel');
+  let unitButtons=[];
+  const hpLabels=[];let hpLabelCount=0;
+  const hpLaneEnds=[];
+  function setText(element,value){if(element.textContent!==value)element.textContent=value;}
+  function measureCanvas(){const bounds=canvas.getBoundingClientRect();canvasCssWidth=Math.max(1,bounds.width);if(pinch)pinch.bounds=bounds;}
+  if(typeof ResizeObserver!=='undefined')new ResizeObserver(measureCanvas).observe(canvas);
+  window.addEventListener('resize',measureCanvas);
+  document.addEventListener('visibilitychange',()=>{
+    // Background time is paused; returning cannot trigger a burst of attacks/spawns.
+    last=performance.now();accumulator=0;
+  });
   const pointers=new Map();
   function clampCamera(value,width=viewWidth) {
     return Math.max(0,Math.min(WORLD-width,value));
   }
   function updateZoomLabel() {
-    $('zoomLabel').textContent='表示 '+Math.round(BASE_VIEW/viewWidth*100)+'%';
+    setText(zoomLabel,'表示 '+Math.round(BASE_VIEW/viewWidth*100)+'%');
   }
   function setViewWidth(width,fraction=.5) {
     const focus=camera+viewWidth*fraction;
@@ -1235,7 +1280,8 @@
     const stage=stages()[index];
     if(!stage||(index<baseStages.length&&index>state.cleared))return;
     cancelAnimationFrame(frame);camera=0;viewWidth=BASE_VIEW;
-    pointers.clear();drag=null;pinch=null;updateZoomLabel();
+    pointers.clear();drag=null;pinch=null;hpLabels.length=0;hpInspector.hidden=true;
+    $('inspectHp').setAttribute('aria-expanded','false');inspectorStamp='';updateZoomLabel();
     battle={
       index,stage,money:150,cap:1000,worker:1,home:1250,homeMax:1250,
       enemy:Math.round(900*stage.diff),enemyMax:Math.round(900*stage.diff),
@@ -1248,16 +1294,17 @@
     $('battleTitle').textContent=stage.name;
     buildUnitButtons();
     page('battle');
-    last=performance.now();frame=requestAnimationFrame(loop);
+    accumulator=0;measureCanvas();last=performance.now();frame=requestAnimationFrame(loop);
   }
   function buildUnitButtons() {
-    const box=$('unitButtons');box.replaceChildren();
+    const box=$('unitButtons');box.replaceChildren();unitButtons=[];
     const list=allies();
     state.deck.forEach((i,slot)=>{
       const a=list[i],b=document.createElement('button');
       b.className='unitbtn';b.dataset.slot=slot;
       b.textContent=a.name+' ';
       const cost=document.createElement('small');cost.textContent=a.cost+'円';b.append(cost);
+      unitButtons.push({element:b,cost:a.cost,slot});
       b.onclick=()=>spawnAlly(i,slot);
       box.append(b);
     });
@@ -1269,6 +1316,7 @@
     battle.cool[slot]=a.cooldown??Math.max(2,2.2+a.cost/190);
     const level=(state.levels[i]||1)+(state.plus[i]||0)-1;
     const max=Math.round(finiteProduct(a.hp,1+.085*level));
+    battle.orderDirty=true;
     battle.units.push({
       a,x:105,hp:max,max,ally:true,allyId:i,
       cd:0,hit:0,attackAnim:0,staggerLeft:0,staggerBank:0
@@ -1277,13 +1325,16 @@
   function spawnEnemy(i,boss=false) {
     const a=allEnemies()[i];if(!a)return false;
     // Protect slower phones if many different mobs are set to very short intervals.
-    if(!boss&&battle.mobTimers&&battle.units.filter(u=>!u.ally&&u.hp>0).length>=MAX_ACTIVE_ENEMIES)
-      return false;
+    if(!boss&&battle.mobTimers){
+      let count=0;for(const u of battle.units)if(!u.ally&&u.hp>0&&++count>=MAX_ACTIVE_ENEMIES)return false;
+    }
     const max=Math.round(finiteProduct(a.hp,battle.stage.diff));
+    battle.orderDirty=true;
     battle.units.push({
       a,x:WORLD-105,hp:max,max,ally:false,enemyId:i,
       cd:0,hit:0,attackAnim:0,staggerLeft:0,staggerBank:0
     });
+    if(battle.searchReady)indexUnit(battle,battle.units[battle.units.length-1],battle.units.length-1);
     return true;
   }
   function spawnBoss() {
@@ -1309,6 +1360,7 @@
     const actual=Math.min(target.hp,amount);
     target.hp-=actual;target.hit=.13;
     target.staggerBank=Math.min(Number.MAX_VALUE,target.staggerBank+actual);
+    if(target.hp<=0&&battle?.searchReady&&Number.isInteger(target._cell))unindexUnit(battle,target);
     const threshold=target.max*.2;
     const rounding=Math.max(1e-6,threshold*1e-12);
     if(target.hp>0&&target.staggerBank+rounding>=threshold){
@@ -1317,8 +1369,77 @@
       target.staggerLeft=STAGGER_TIME; // Tilt and bounce twice for either team.
     }
   }
+  // Live 1D buckets retain sequential movement/damage and insertion-order ties.
+  const CELL=128,CELL_COUNT=Math.ceil(WORLD/CELL)+1;
+  function cellOf(x){return Math.max(0,Math.min(CELL_COUNT-1,Math.floor(x/CELL)));}
+  function lowerBound(list,x,order=-Infinity){
+    let lo=0,hi=list.length;
+    while(lo<hi){const mid=(lo+hi)>>>1,v=list[mid];if(v.x<x||(v.x===x&&v._order<order))lo=mid+1;else hi=mid;}
+    return lo;
+  }
+  function indexUnit(b,u,order){
+    u._order=order;u._cell=cellOf(u.x);
+    const list=b.grid[u.ally?1:0][u._cell];
+    list.splice(lowerBound(list,u.x,order),0,u);
+  }
+  function unindexUnit(b,u){
+    const list=b.grid[u.ally?1:0][u._cell],i=list.indexOf(u);
+    if(i>=0)list.splice(i,1);
+  }
+  function prepareTargets(b){
+    // Tiny battles avoid index maintenance; still no temporary foe arrays.
+    if(b.units.length<24){b.searchReady=false;b.grid=null;if(b.victims)b.victims.length=0;return;}
+    if(!b.grid)b.grid=[0,1].map(()=>Array.from({length:CELL_COUNT},()=>[]));
+    for(const side of b.grid)for(const cell of side)cell.length=0;
+    for(let i=0;i<b.units.length;i++){
+      const u=b.units[i];u._order=i;u._cell=cellOf(u.x);
+      if(u.hp>0)b.grid[u.ally?1:0][u._cell].push(u);
+    }
+    for(const side of b.grid)for(const cell of side)cell.sort((a,c)=>a.x-c.x||a._order-c._order);
+    b.searchReady=true;
+  }
+  function movedUnit(b,u){
+    unindexUnit(b,u);indexUnit(b,u,u._order);
+  }
+  function nearestTarget(b,u){
+    if(!b.searchReady){
+      const direction=u.ally?1:-1;let target=null,dist=Infinity;
+      for(const v of b.units){if(v.ally===u.ally||v.hp<=0||direction*(v.x-u.x)<-9)continue;
+        const gap=Math.abs(v.x-u.x);if(gap<dist){dist=gap;target=v;}}
+      return target;
+    }
+    const direction=u.ally?1:-1,side=b.grid[u.ally?0:1];
+    let target=null,dist=Infinity;
+    for(let cell=cellOf(u.x-direction*9);cell>=0&&cell<CELL_COUNT;cell+=direction){
+      const minGap=u.ally?Math.max(0,cell*CELL-u.x):Math.max(0,u.x-(cell+1)*CELL);
+      if(minGap>dist)break;
+      const list=side[cell],right=lowerBound(list,u.x);
+      // Nearest neighbor on either side; first insertion wins equal gaps/positions.
+      for(let candidate=0;candidate<2;candidate++){
+        const index=candidate===0?right:(right>0?lowerBound(list,list[right-1].x):-1);
+        const v=list[index];if(!v||direction*(v.x-u.x)<-9)continue;
+        const gap=Math.abs(v.x-u.x);
+        if(gap<dist||(gap===dist&&target&&v._order<target._order)){dist=gap;target=v;}
+      }
+    }
+    return target;
+  }
+  function hitArea(b,u,reach,power){
+    if(!b.searchReady){const direction=u.ally?1:-1;
+      for(const v of b.units)if(v.ally!==u.ally&&v.hp>0&&direction*(v.x-u.x)>=-9&&Math.abs(v.x-u.x)<=reach+25)damageUnit(v,power);
+      return;
+    }
+    const victims=b.victims||(b.victims=[]);victims.length=0;
+    const side=b.grid[u.ally?0:1],direction=u.ally?1:-1;
+    for(let cell=cellOf(u.x-reach-25),end=cellOf(u.x+reach+25);cell<=end;cell++){
+      for(const v of side[cell])if(v.hp>0&&direction*(v.x-u.x)>=-9&&Math.abs(v.x-u.x)<=reach+25)victims.push(v);
+    }
+    victims.sort((a,b)=>a._order-b._order);
+    for(const v of victims)damageUnit(v,power);
+  }
   function update(dt) {
     const b=battle;if(!b||b.result)return;
+    b.searchReady=false;
     b.time+=dt;
     b.money=Math.min(b.cap,b.money+(28+15*b.worker)*dt);
     for(const key of Object.keys(b.cool))b.cool[key]=Math.max(0,b.cool[key]-dt);
@@ -1342,15 +1463,14 @@
     if(!b.bossSpawned&&(b.mobTimers?
       b.stage.bossTrigger==='time'&&b.time>=b.stage.bossTime:
       b.time>=31||b.enemy<=b.enemyMax*.58))spawnBoss();
+    prepareTargets(b);
     for(const u of b.units) {
       if(u.hp<=0)continue;
       u.cd=Math.max(0,u.cd-dt);u.hit=Math.max(0,u.hit-dt);
       u.attackAnim=Math.max(0,u.attackAnim-dt);
       u.staggerLeft=Math.max(0,u.staggerLeft-dt);
       const direction=u.ally?1:-1,castle=u.ally?WORLD-105:105;
-      const foes=b.units.filter(v=>v.ally!==u.ally&&v.hp>0&&direction*(v.x-u.x)>=-9);
-      let target=null,dist=Infinity;
-      for(const v of foes){const gap=Math.abs(v.x-u.x);if(gap<dist){dist=gap;target=v;}}
+      const target=nearestTarget(b,u);
       const goal=target?target.x:castle;
       const distance=Math.abs(goal-u.x),reach=u.a.range+18;
       if(distance<=reach){
@@ -1359,8 +1479,7 @@
           const level=u.ally?(state.levels[u.allyId]||1)+(state.plus[u.allyId]||0)-1:0;
           const power=finiteProduct(u.a.atk,u.ally?1+.085*level:b.stage.diff);
           if(target){
-            const victims=u.a.area?foes.filter(v=>Math.abs(v.x-u.x)<=reach+25):[target];
-            victims.forEach(v=>damageUnit(v,power));
+            if(u.a.area)hitArea(b,u,reach,power);else damageUnit(target,power);
           }else if(u.ally){
             b.enemy-=power;
             if(b.mobTimers&&b.stage.bossTrigger==='castle')spawnBoss();
@@ -1369,10 +1488,13 @@
         }
       }else{
         const step=Math.min(u.a.speed*dt,Math.max(0,distance-reach));
-        u.x+=direction*step;
+        if(step>0){u.x+=direction*step;if(b.searchReady)movedUnit(b,u);}
       }
     }
-    b.units=b.units.filter(u=>u.hp>0);
+    b.searchReady=false;
+    let alive=0;for(const u of b.units)if(u.hp>0)b.units[alive++]=u;
+    if(alive!==b.units.length)b.orderDirty=true;
+    b.units.length=alive;
     if(b.enemy<=0)endBattle(true);
     else if(b.home<=0)endBattle(false);
   }
@@ -1390,20 +1512,34 @@
     const ended=b;
     setTimeout(()=>{
       if(battle===ended){
-        battle=null;cancelAnimationFrame(frame);
+        battle=null;hpLabels.length=0;cancelAnimationFrame(frame);
         page('stages');
       }
     },1700);
   }
   function imageReady(img){return img&&img.complete&&img.naturalWidth>0;}
+  function spriteMetrics(img,size){
+    if(!img._metrics)img._metrics=new Map();
+    if(!img._metrics.has(size)){const ratio=img.naturalWidth/img.naturalHeight,w=Math.min(size*1.25,size*ratio);img._metrics.set(size,{w,h:w/ratio});}
+    return img._metrics.get(size);
+  }
+  function compactHp(value){
+    const n=Math.max(0,Math.ceil(value));
+    if(n<1000000)return String(n);
+    return n.toExponential(2).replace('e+','e');
+  }
   function renderCastle(x,hp,max,label,tint) {
     const px=(x-camera)*canvas.width/viewWidth,scale=BASE_VIEW/viewWidth;
     if(px<-90||px>canvas.width+90)return;
     ctx.save();ctx.translate(px,GROUND);ctx.scale(scale,scale);
-    ctx.fillStyle=tint;ctx.fillRect(-34,-103,68,103);
-    ctx.fillStyle='#f6d590';
-    ctx.beginPath();ctx.moveTo(-42,-103);ctx.lineTo(0,-140);
-    ctx.lineTo(42,-103);ctx.fill();
+    const img=selectedDesign(x===105?'homeCastle':'enemyCastle');
+    if(imageReady(img)){
+      const ratio=img.naturalWidth/img.naturalHeight,h=140,w=Math.min(130,h*ratio);
+      ctx.drawImage(img,-w/2,-h,w,h);
+    }else{
+      ctx.fillStyle=tint;ctx.fillRect(-34,-103,68,103);
+      ctx.fillStyle='#f6d590';ctx.beginPath();ctx.moveTo(-42,-103);ctx.lineTo(0,-140);ctx.lineTo(42,-103);ctx.fill();
+    }
     ctx.fillStyle='#182c45';ctx.fillRect(-42,-164,84,9);
     ctx.fillStyle='#78e7b2';ctx.fillRect(-42,-164,84*Math.max(0,hp/max),9);
     ctx.fillStyle='#fff';ctx.font='16px sans-serif';
@@ -1425,11 +1561,11 @@
     ctx.ellipse(0,2,size*.32,7,0,0,Math.PI*2);ctx.fill();
     ctx.save();ctx.translate(lunge,-hop);ctx.rotate(tilt);
     if(imageReady(img)){
-      const ratio=img.naturalWidth/img.naturalHeight;
-      const h=size,w=Math.min(size*1.25,size*ratio);
-      const actualH=w/ratio;
+      const {w,h:actualH}=spriteMetrics(img,size);
       if(u.hit>0)ctx.filter='brightness(1.5)';
-      ctx.drawImage(img,-w/2,-actualH,w,actualH);
+      ctx.save();
+      if(!u.ally&&u.enemyId<20&&!art.has('enemy:'+enemies[u.enemyId].id)&&designChoice('enemy')?.id!=='original')ctx.scale(-1,1);
+      ctx.drawImage(img,-w/2,-actualH,w,actualH);ctx.restore();
       ctx.filter='none';
     }else{
       ctx.fillStyle=u.hit>0?'#fff':u.a.color;
@@ -1445,30 +1581,88 @@
     }
     ctx.restore();
     ctx.restore();
-    const mode=state.hpDisplay;
-    if(mode==='none')return;
-    const barY=GROUND-(size+26+hop)*scale;
-    if(mode==='bar'||mode==='both'){
-      const width=Math.max(36,Math.max(42,size*.8)*scale);
-      ctx.fillStyle='#101c30';ctx.fillRect(x-width/2,barY,width,6);
-      ctx.fillStyle=u.ally?'#7eeab3':'#ff8f95';
-      ctx.fillRect(x-width/2,barY,width*Math.max(0,u.hp/u.max),6);
+    // A small team marker remains visible in all four HP modes.
+    ctx.fillStyle=u.ally?'#79edc2':'#ff9ca8';ctx.fillRect(x-3,GROUND+5,6,4);
+    const mode=state.hpDisplay;if(mode==='none')return;
+    const fontSize=Math.max(13,Math.round(11*canvas.width/canvasCssWidth));
+    const entry=hpLabels[hpLabelCount]||(hpLabels[hpLabelCount]={});hpLabelCount++;
+    entry.u=u;entry.x=x;entry.fontSize=fontSize;entry.shown=false;
+    entry.baseY=GROUND-(size+30+hop)*scale;
+    entry.width=mode==='bar'?Math.max(30,size*.8*scale):Math.min(canvas.width-10,Math.max(60,(compactHp(u.hp).length+compactHp(u.max).length+4)*fontSize*.61));
+  }
+  function drawHpLabels(){
+    hpLaneEnds.length=0;
+    const mode=state.hpDisplay,pixel=canvas.width/canvasCssWidth;
+    const rowHeight=Math.max(12,Math.round(18*pixel));
+    let baseY=GROUND;for(let i=0;i<hpLabelCount;i++)baseY=Math.min(baseY,hpLabels[i].baseY);
+    const maxLanes=Math.max(1,Math.min(6,Math.floor((baseY-65)/rowHeight)));
+    // Use screen-space rows. Fully occupied rows form a bounded stack; exact data is in the inspector.
+    for(let i=0;i<hpLabelCount;i++){
+      const e=hpLabels[i],u=e.u,w=e.width;
+      const x=Math.max(w/2+4,Math.min(canvas.width-w/2-4,e.x));
+      let lane=0;while(lane<maxLanes&&(hpLaneEnds[lane]??-Infinity)>x-w/2-4)lane++;
+      if(lane===maxLanes)continue;
+      hpLaneEnds[lane]=x+w/2;
+      const y=Math.max(65+e.fontSize,baseY)-lane*rowHeight;e.y=y;e.shown=true;
+      if(lane>0){ctx.strokeStyle=u.ally?'#79edc2':'#ff9ca8';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(e.x,e.baseY+6);ctx.lineTo(x,y+6);ctx.stroke();}
+      if(mode==='number'||mode==='both'){
+        ctx.fillStyle='#0a1629ee';ctx.fillRect(x-w/2,y-e.fontSize-2,w,e.fontSize+5);
+        ctx.font='bold '+e.fontSize+'px sans-serif';ctx.textAlign='center';
+        ctx.fillStyle=u.ally?'#a5ffe0':'#ffc1c8';
+        ctx.fillText((u.ally?'味 ':'敵 ')+compactHp(u.hp)+'/'+compactHp(u.max),x,y);
+        ctx.textAlign='left';
+      }
+      if(mode==='bar'||mode==='both'){
+        ctx.fillStyle='#07101e';ctx.fillRect(x-w/2-1,y+3,w+2,8);
+        ctx.fillStyle=u.ally?'#79edc2':'#ff9ca8';ctx.fillRect(x-w/2,y+4,w*Math.max(0,u.hp/u.max),6);
+      }
     }
-    if(mode==='number'||mode==='both'){
-      const label=Math.max(0,Math.ceil(u.hp))+'/'+Math.max(1,Math.ceil(u.max));
-      // The canvas shrinks on phones, so compensate to keep digits legible in CSS pixels.
-      const fontSize=Math.max(13,Math.min(34,Math.round(12*canvas.width/Math.max(1,canvas.clientWidth))));
-      ctx.save();ctx.font='bold '+fontSize+'px sans-serif';ctx.textAlign='center';
-      ctx.lineWidth=Math.max(3,fontSize*.24);ctx.strokeStyle='#101c30';
-      const y=barY-6;
-      ctx.strokeText(label,x,y);ctx.fillStyle='#fff';ctx.fillText(label,x,y);
-      ctx.restore();
+  }
+  function orderedActors(b){
+    const order=b.drawOrder||(b.drawOrder=[]);
+    if(b.orderDirty||order.length!==b.units.length){
+      order.length=0;for(const u of b.units)order.push(u);
+      order.sort((a,c)=>a.x-c.x||a._order-c._order);b.orderDirty=false;return order;
     }
+    let shifts=0;
+    for(let i=1;i<order.length;i++){
+      const u=order[i];let j=i-1;
+      while(j>=0&&(order[j].x>u.x||(order[j].x===u.x&&order[j]._order>u._order))){order[j+1]=order[j];j--;shifts++;}
+      order[j+1]=u;
+      if(shifts>order.length*4){order.sort((a,c)=>a.x-c.x||a._order-c._order);break;}
+    }
+    return order;
+  }
+  function syncBattleUi(b){
+    updateZoomLabel();
+    setText(moneyLabel,'お金 '+Math.floor(b.money)+' / '+b.cap);
+    setText(castleLabel,'味方城 '+Math.max(0,Math.ceil(b.home))+' / '+b.homeMax+' ｜ 敵城 '+Math.max(0,Math.ceil(b.enemy))+' / '+b.enemyMax);
+    let ally=0,enemy=0;for(const u of b.units){if(u.ally)ally++;else enemy++;}
+    setText(statusLabel,b.result||('戦闘中 '+Math.floor(b.time)+'秒　味方 '+ally+'体 / 敵 '+enemy+'体'));
+    for(const {element,cost,slot}of unitButtons){
+      const disabled=!!b.result||b.money<cost||b.cool[slot]>0;
+      if(element.disabled!==disabled)element.disabled=disabled;
+    }
+    if(!hpInspector.hidden)refreshInspector(b);
+  }
+  // Exact HP uses the Number's round-trip decimal representation, never compacted.
+  const hpInspector=$('hpInspector');let inspectorStamp='';
+  $('inspectHp').onclick=()=>{hpInspector.hidden=!hpInspector.hidden;$('inspectHp').setAttribute('aria-expanded',String(!hpInspector.hidden));inspectorStamp='';if(battle&&!hpInspector.hidden)refreshInspector(battle);};
+  function refreshInspector(b){
+    const stamp=Math.floor(b.time*5);if(stamp===inspectorStamp&&!b.result)return;inspectorStamp=stamp;
+    const rows=b.units.map((u,i)=>[u.ally?'味方':'敵',(u.ally?u.a.name:enemyName(u.enemyId))||'キャラ',String(u.hp),String(u.max),String(Math.round(u.x))]);
+    const body=$('hpRows');body.replaceChildren();
+    for(const row of rows){const tr=document.createElement('tr');for(const value of row){const td=document.createElement('td');td.textContent=value;tr.append(td);}body.append(tr);}
   }
   function draw() {
     const b=battle;if(!b)return;
     const w=canvas.width,h=canvas.height;
+    hpLabelCount=0;
     ctx.fillStyle='#233b60';ctx.fillRect(0,0,w,h);
+    const background=selectedDesign('background');
+    if(imageReady(background))ctx.drawImage(background,0,0,w,h);
+    else{
     ctx.fillStyle=color[b.stage.theme%6]+'77';ctx.beginPath();
     ctx.arc(230-camera*.12,143,115,0,2*Math.PI);ctx.fill();
     for(let i=0;i<12;i++){
@@ -1477,9 +1671,11 @@
     }
     ctx.fillStyle='#577d66';ctx.fillRect(0,GROUND,w,h-GROUND);
     ctx.fillStyle='#add58e';ctx.fillRect(0,GROUND,w,5);
+    }
     renderCastle(105,b.home,b.homeMax,'味方城','#6fd5b2');
     renderCastle(WORLD-105,b.enemy,b.enemyMax,'敵城','#e37780');
-    [...b.units].sort((a,c)=>a.x-c.x).forEach(renderActor);
+    for(const u of orderedActors(b))renderActor(u);
+    hpLabels.length=hpLabelCount;drawHpLabels();
     ctx.fillStyle='#101c30d9';ctx.fillRect(0,0,w,51);
     ctx.fillStyle='#f8f5e8';ctx.font='20px sans-serif';
     ctx.fillText(b.stage.name+'　'+Math.floor(b.time)+'秒',17,32);
@@ -1488,25 +1684,26 @@
       ctx.fillStyle='#8cf0c1';ctx.font='bold 64px sans-serif';
       ctx.textAlign='center';ctx.fillText(b.result,w/2,h/2);ctx.textAlign='left';
     }
-    $('battleMoney').textContent='お金 '+Math.floor(b.money)+' / '+b.cap;
-    $('battleHp').textContent='味方 '+Math.max(0,Math.ceil(b.home))+' ｜ 敵 '+Math.max(0,Math.ceil(b.enemy));
-    document.querySelectorAll('.unitbtn').forEach(btn=>{
-      const slot=Number(btn.dataset.slot),i=state.deck[slot];
-      btn.disabled=!!b.result||b.money<allies()[i].cost||b.cool[slot]>0;
-    });
+    syncBattleUi(b);
   }
   function loop(now) {
     if(!battle)return;
-    const dt=Math.min(.05,(now-last)/1000);last=now;
-    update(dt);draw();
-    frame=requestAnimationFrame(loop);
+    const elapsed=Math.max(0,(now-last)/1000);last=now;
+    if(!document.hidden){
+      const accepted=Math.min(MAX_CATCHUP,elapsed);
+      battle.discardedTime=(battle.discardedTime||0)+elapsed-accepted;
+      accumulator+=accepted;
+      let steps=0;
+      while(accumulator+1e-9>=STEP&&steps<MAX_STEPS){update(STEP);accumulator-=STEP;steps++;}
+    }else accumulator=0;
+    draw();frame=requestAnimationFrame(loop);
   }
   function startPinch() {
     const pair=[...pointers.entries()].slice(0,2),a=pair[0][1],b=pair[1][1];
     const bounds=canvas.getBoundingClientRect();
     const fraction=Math.max(0,Math.min(1,((a.x+b.x)/2-bounds.left)/bounds.width));
     pinch={ids:pair.map(entry=>entry[0]),distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),
-      view:viewWidth,focus:camera+viewWidth*fraction};
+      view:viewWidth,focus:camera+viewWidth*fraction,bounds};
     drag=null;
   }
   canvas.onpointerdown=e=>{
@@ -1523,14 +1720,13 @@
       if(!pinch||pinch.ids.some(id=>!pointers.has(id)))startPinch();
       const [a,b]=pinch.ids.map(id=>pointers.get(id));
       const distance=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y));
-      const bounds=canvas.getBoundingClientRect();
+      const bounds=pinch.bounds;
       const fraction=Math.max(0,Math.min(1,((a.x+b.x)/2-bounds.left)/bounds.width));
       // Requested gesture: spreading fingers reveals more of the battlefield.
       viewWidth=Math.max(MIN_VIEW,Math.min(WORLD,pinch.view*distance/pinch.distance));
       camera=clampCamera(pinch.focus-viewWidth*fraction);
-      updateZoomLabel();
     }else if(drag&&drag.id===e.pointerId){
-      camera=clampCamera(drag.camera-(e.clientX-drag.x)*viewWidth/canvas.clientWidth);
+      camera=clampCamera(drag.camera-(e.clientX-drag.x)*viewWidth/canvasCssWidth);
     }
   };
   function endPointer(e) {
