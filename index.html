@@ -51,6 +51,7 @@
     @media(max-width:760px){#stageEditor .enemy-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
   <script defer src="designs.js"></script>
+  <script defer src="characters.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body><main id="app">
@@ -74,7 +75,7 @@
   <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><p class="hint">数字の大きい敵ほど強く、Bはボスです。</p><div id="stageCards" class="cards"></div>
     <details id="stageEditor" class="import-panel"><summary>自作ステージを作る・編集する</summary><label class="stage-setting" for="stageName">ステージ名<input id="stageName" type="text" maxlength="40" autocomplete="off" value="自作ステージ1"></label><div id="stageBuilder" class="two"><div><div class="builder" id="stageControls"></div><h3>登場するモブ</h3><p class="hint">モブを選び、種類ごとに出現間隔を入力します。最初の1体も設定秒数後に出現します（0.1秒以上）。端末を守るため、同時に出現するモブは最大120体です。</p><div id="enemyGrid" class="enemy-grid"></div></div><div><label class="stage-setting" for="bossTrigger">ボスの出現条件<select id="bossTrigger"><option value="time">開始から指定した秒数後</option><option value="castle">敵の塔が攻撃されたら</option></select></label><label id="bossTimeRow" class="stage-setting" for="bossTime">開始から何秒後<input id="bossTime" type="number" min="0" step="any" value="31" inputmode="decimal"></label><div class="preview" id="stagePreview"><h2 id="stagePreviewName">自作ステージ1</h2></div><p id="stageSummary" class="log" role="status"></p><div class="stage-actions"><button class="primary bigplay" id="createStage">このステージを作る</button><button id="cancelStageEdit" hidden>編集をやめる</button></div></div></div></details>
   </div></section>
-  <section id="squad" class="screen"><div class="panel"><h2>ユニット</h2><p class="hint">最大8体を編成・育成できます。手描き画像は「自作キャラ 味方」から設定できます。</p><div id="allyCards" class="cards"></div></div></section>
+  <section id="squad" class="screen"><div class="panel"><h2>ユニット</h2><p class="hint">追加の「ネコ」「ながネコ」はこの一覧で編成できます。通常・攻撃・ノックバックの3つの絵が戦闘中に切り替わります。</p><p class="hint">最大8体を編成・育成できます。手描き画像は「自作キャラ 味方」から設定できます。</p><div id="allyCards" class="cards"></div></div></section>
   <section id="gacha" class="screen"><div class="panel"><h2>星降りガチャ</h2><div class="two"><button class="bigplay" id="pull30">1回引く ★30</button><button class="bigplay primary" id="pull100">高レア ★100</button></div><div id="gachaLog" class="log" role="status"></div><p class="hint">同じ仲間が出た場合はプラス値が1上がります。</p></div></section>
   <section id="customAllies" class="screen"><div class="panel"><h2>自作キャラ・味方</h2><p class="hint">ペイントで作った味方もここに並びます。名前・HP・攻撃力・コストなどを編集し、「ユニット」で編成してください。HP・攻撃力・移動速度に上限はありません（1以上）。</p><button id="newCustomAlly" class="primary">画像なしで味方を追加</button><button id="paintCustomAlly">絵から味方を作る</button><p id="customAllyStatus" class="log" role="status"></p><div id="customAllyCards" class="cards"></div><div id="allyImportHost">
     <div id="importPanel" class="import-panel"><h3 id="importHeading">手描き画像を味方キャラに設定</h3><p class="hint">緑色の背景を自動で透明化します。表示を確認してから適用してください。画像はこのブラウザ内だけに保存されます。</p>
@@ -82,7 +83,7 @@
       <div class="import-controls"><div><label for="greenStrength">緑の除去強度 <output id="strengthValue">55</output></label><input id="greenStrength" type="range" min="0" max="100" value="55"><p class="hint">髪や体の緑が消える場合は弱めてください。</p></div><div class="preview"><canvas id="chromaPreview" width="320" height="320" aria-label="背景を除去した画像のプレビュー"></canvas></div></div>
       <button class="primary" id="applyArt" disabled>プレビューの画像を適用</button><p id="importStatus" class="log" role="status"></p>
     </div></div></div></section>
-  <section id="customEnemies" class="screen"><div class="panel"><h2>自作キャラ・敵</h2><p class="hint">ペイントで作った敵もここに並びます。名前・HP・攻撃力・モブ／ボスなどを編集できます。HP・攻撃力・移動速度に上限はありません（1以上）。</p><button id="newCustomEnemy" class="primary">絵を描いて敵を作る</button><p id="customEnemyStatus" class="log" role="status"></p><div id="customEnemyCards" class="cards"></div><div id="enemyImportHost"></div>
+  <section id="customEnemies" class="screen"><div class="panel"><h2>自作キャラ・敵</h2><p class="hint">ペイントで作った敵もここに並びます。名前・HP・攻撃力・モブ／ボスなどを編集できます。HP・攻撃力・移動速度に上限はありません（1以上）。</p><details class="import-panel"><summary>オリジナル敵7体（自作ステージで選択）</summary><p class="hint">モブ6体とボスのぶんぶん先生を、ステージの編集画面で選べます。未指定能力は仮設定です。ヲモさんの特殊能力は未発動です。</p><div id="originalEnemyCards" class="cards"></div></details><button id="newCustomEnemy" class="primary">絵を描いて敵を作る</button><p id="customEnemyStatus" class="log" role="status"></p><div id="customEnemyCards" class="cards"></div><div id="enemyImportHost"></div>
     <details class="import-panel"><summary>既存の敵20体の名前・画像を編集</summary><p class="hint">M＝モブ、B＝ボス。数字が大きいほど強くなります。</p><label for="enemyBatchUpload">敵画像をまとめて読み込む（PNG・JPEG・WebP、1枚8MB以下）</label><input id="enemyBatchUpload" type="file" accept="image/png,image/jpeg,image/webp" multiple><p class="hint">ファイル名の数字で自動配置します。例：M-01.png、B-20.png。画像はGitHubへ送られません。</p><p id="enemyImportStatus" class="log" role="status"></p><div id="enemyRoster" class="roster"></div></details>
   </div></section>
   <section id="paint" class="screen"><div class="panel">

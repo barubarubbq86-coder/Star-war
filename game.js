@@ -1,8 +1,23 @@
-// Starling Siege: Phase 1. Optional bundled designs; personal art stays on this device.
+// Starling Siege: Phase 2. Optional bundled designs; personal art stays on this device.
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
   const color = ['#f2be79','#88dcb5','#a4b4f5','#e597c2','#b89a76','#f97f70'];
+  if(!Array.isArray(window.SIEGE_CHARACTERS)||window.SIEGE_CHARACTERS.length===0){
+    $('homeLog').textContent='キャラクターデータを読み込めませんでした。更新ファイルを確認して、ページを開き直してください。保存データは変更していません。';
+    return;
+  }
+  const originalCharacters=window.SIEGE_CHARACTERS;
+  const originalById=new Map(originalCharacters.map(c=>[c.id,c]));
+  const originalAllies=new Map(originalCharacters.filter(c=>c.side==='ally').map(c=>[c.slot,c]));
+  const originalEnemies=new Map(originalCharacters.filter(c=>c.side==='enemy').map(c=>[c.slot,c]));
+  const characterImages=new Map();
+  function originalStats(c){return {...c.stats,id:c.id,name:c.name,type:c.type,spriteId:c.id,color:c.side==='ally'?'#a7edce':'#f3b5ba',rank:1};}
+  function characterImage(c,pose='idle'){
+    const file=c.frames[pose].path;
+    if(!characterImages.has(file)){const img=new Image();img.src='./assets/'+file;characterImages.set(file,img);}
+    return characterImages.get(file);
+  }
   const rarity = ['ノーマル','レア','激レア','超激レア'];
   const names = ['モチ','イワ','ピコ','ハリ','ランタン','カゼ','コロ','シダ','コバルト','スイセイ','ヌマ','クオーツ','オーロラ','メテオ','タイタン'];
   const roles = [
@@ -126,15 +141,15 @@
   const DEFAULT_MOB_INTERVAL=4.5,MIN_MOB_INTERVAL=.1,MAX_ACTIVE_ENEMIES=120;
   function enemyType(index) {
     return index<enemies.length?enemies[index]?.type:
-      state.customEnemies[index-enemies.length]?.type;
+      state.customEnemies[index-enemies.length]?.type||originalEnemies.get(index)?.type;
   }
   // Old stages used one shared random spawn timer. Give each saved mob its own
   // timer when loading that data, without changing its name or enemy IDs.
   function normalizedStage(raw,n) {
     const s=raw&&typeof raw==='object'?raw:{};
-    const enemyCount=enemies.length+state.customEnemies.length;
+    const validEnemy=i=>Number.isInteger(i)&&i>=0&&!!enemyType(i);
     const pool=Array.isArray(s.pool)?[...new Set(s.pool.filter(i=>
-      Number.isInteger(i)&&i>=0&&i<enemyCount&&enemyType(i)==='M'))]:[];
+      validEnemy(i)&&enemyType(i)==='M'))]:[];
     if(!pool.length&&(!Array.isArray(s.pool)||s.pool.length))pool.push(0);
     const intervals=s.spawnIntervals&&typeof s.spawnIntervals==='object'?s.spawnIntervals:{};
     const spawnIntervals={};
@@ -147,7 +162,7 @@
       name:String(s.name||'自作ステージ'+(n+1)).trim().slice(0,40)||'自作ステージ'+(n+1),
       diff:Number.isFinite(s.diff)&&s.diff>0?s.diff:1,
       theme:Number.isInteger(s.theme)&&s.theme>=0&&s.theme<color.length?s.theme:0,
-      pool,boss:Number.isInteger(s.boss)&&s.boss>=0&&s.boss<enemyCount&&
+      pool,boss:validEnemy(s.boss)&&
         enemyType(s.boss)==='B'?s.boss:15,
       spawnIntervals,bossTrigger:s.bossTrigger==='castle'?'castle':'time',
       bossTime:Number.isFinite(bossTime)&&bossTime>=0?bossTime:31
@@ -155,8 +170,10 @@
   }
   state.customStages=Array.isArray(state.customStages)?
     state.customStages.slice(0,20).map(normalizedStage):[];
-  state.owned=Array.isArray(state.owned)?[...new Set(state.owned.filter(n=>Number.isInteger(n)&&n>=0&&n<15+state.customChars.length))]:[0,1,2,3,4];
+  state.owned=Array.isArray(state.owned)?[...new Set(state.owned.filter(n=>Number.isInteger(n)&&n>=0&&(n<15+state.customChars.length||originalAllies.has(n))))]:[0,1,2,3,4];
   if (!state.owned.length) state.owned=[0];
+  // The two original allies are available without changing the existing deck/gacha.
+  for(const slot of originalAllies.keys())if(!state.owned.includes(slot))state.owned.push(slot);
   state.deck=Array.isArray(state.deck)?[...new Set(state.deck.filter(n=>state.owned.includes(n)))].slice(0,8):[0,1,2,3,4];
   if (!state.deck.length) state.deck=[state.owned[0]];
   state.levels=Array.isArray(state.levels)?state.levels:Array(35).fill(1);
@@ -215,21 +232,25 @@
     $('homeLog').textContent='ログインボーナス：★10！';
   }
   function allEnemies() {
-    return enemies.concat(state.customEnemies.map((s,n)=>({
+    const list=enemies.concat(state.customEnemies.map((s,n)=>({
       ...normalizedEnemyStats(s.stats),id:s.id,name:s.name,type:s.type,
       rank:n+1,color:color[(n+2)%6]
     })));
+    for(const [slot,c] of originalEnemies)list[slot]=originalStats(c);
+    return list;
   }
   function enemyName(i) {
     const e=allEnemies()[i];
     return e?(i<enemies.length?state.enemyNames[e.id]||e.id:e.name):'不明な敵';
   }
   function allies() {
-    return baseAllies.concat(state.customChars.map(s => {
+    const list=baseAllies.concat(state.customChars.map(s => {
       const r=roles[Number.isInteger(s.role)&&roles[s.role]?s.role:0];
       return {...r,...normalizedStats(s.stats,s.role),name:s.name||'バディ',rarity:1,
         color:color[s.color%6]||color[0],legacyImage:s.image||''};
     }));
+    for(const [slot,c] of originalAllies)list[slot]=originalStats(c);
+    return list;
   }
   function stages() { return baseStages.concat(state.customStages); }
   function log(message) { $('homeLog').textContent=message; }
@@ -239,7 +260,7 @@
     if (id==='stages') { renderStages();renderStageBuilder(); }
     if (id==='squad') renderSquad();
     if (id==='customAllies') {renderCustomAllies();showImport('ally');}
-    if (id==='customEnemies') {renderCustomEnemies();renderRoster();showImport('enemy');}
+    if (id==='customEnemies') {renderOriginalEnemies();renderCustomEnemies();renderRoster();showImport('enemy');}
     if (id==='paint') refreshPaintTargets();
     if (id==='settings') $('unitHpDisplay').value=state.hpDisplay;
     wallet();
@@ -320,6 +341,7 @@
   function allyArt(i) {
     const saved=art.get('ally:'+i);
     if (saved) return saved;
+    if(originalAllies.has(i))return characterImage(originalAllies.get(i));
     return i>=15?getImage(state.customChars[i-15]?.image||''):selectedDesign('ally',i);
   }
   // Twenty deterministic, original creatures keep all stages playable before import.
@@ -363,6 +385,7 @@
     const image=new Image();image.src=c.toDataURL('image/png');return image;
   }
   function enemyArt(i) {
+    if(originalEnemies.has(i))return characterImage(originalEnemies.get(i));
     const e=i<enemies.length?enemies[i]:state.customEnemies[i-enemies.length];if(!e)return null;
     const saved=art.get('enemy:'+e.id);
     if(saved)return saved;
@@ -424,7 +447,7 @@
         if(state.xp>=cost&&lv<30){state.xp-=cost;state.levels[i]=lv+1;save();renderSquad();}
       };
       card.append(title,details,equip,upgrade);
-      if(i>=15){
+      if(i>=15&&!originalAllies.has(i)){
         const edit=document.createElement('button');edit.textContent='能力を編集';
         edit.onclick=()=>page('customAllies');
         card.append(edit);
@@ -499,6 +522,18 @@
       ]);
       wrap.append(card);
     });
+  }
+  function renderOriginalEnemies(){
+    const wrap=$('originalEnemyCards');wrap.replaceChildren();
+    for(const c of originalEnemies.values()){
+      const card=document.createElement('article');card.className='card';
+      const title=document.createElement('h3');title.textContent=c.name+(c.type==='B'?'（ボス）':'');
+      const img=document.createElement('img');img.src=characterImage(c).src;img.alt=c.name;
+      const stats=document.createElement('p'),a=c.stats;
+      stats.textContent='HP '+a.hp+' / 攻撃 '+a.atk+' / 間隔 '+Number(a.interval.toFixed(3))+'秒 / 射程 '+a.range+' / 速度 '+a.speed+' / KB '+a.knockbacks+'回';
+      const note=document.createElement('p');note.textContent=c.description;
+      card.append(title,img,stats,note);wrap.append(card);
+    }
   }
   function renderCustomEnemies() {
     const wrap=$('customEnemyCards');wrap.replaceChildren();
@@ -811,7 +846,7 @@
     }else{
       allies().forEach((a,i)=>{
         const option=document.createElement('option');option.value=String(i);
-        option.textContent=a.name+'（'+(i>=15?'自作味方':'既存の味方')+'）';target.append(option);
+        option.textContent=a.name+'（'+(originalAllies.has(i)?'オリジナル':i>=15?'自作味方':'既存の味方')+'）';target.append(option);
       });
     }
     target.value=[...target.options].some(o=>o.value===selected)?selected:'new';
@@ -848,7 +883,7 @@
     }else{
       allies().forEach((a,i)=>{
         const option=document.createElement('option');option.value=String(i);
-        option.textContent=a.name+(i>=15?'（自作味方）':'（既存の味方）');target.append(option);
+        option.textContent=a.name+(originalAllies.has(i)?'（オリジナル）':i>=15?'（自作味方）':'（既存の味方）');target.append(option);
       });
     }
     target.value=[...target.options].some(o=>o.value===selected)?selected:'new';
@@ -978,7 +1013,7 @@
     const isNew=target==='new';
     if(isNew&&state.customChars.length>=20)throw new Error('キャラ数の上限');
     const index=isNew?15+state.customChars.length:Number(target);
-    if(!Number.isInteger(index)||index<0||index>=allies().length+(isNew?1:0))
+    if(!Number.isInteger(index)||index<0||(!isNew&&!allies()[index]))
       throw new Error('適用先が不正');
     await putArt('ally:'+index,blob);
     if(isNew&&createCharacter(requestedName)===null){
@@ -1361,7 +1396,8 @@
     target.hp-=actual;target.hit=.13;
     target.staggerBank=Math.min(Number.MAX_VALUE,target.staggerBank+actual);
     if(target.hp<=0&&battle?.searchReady&&Number.isInteger(target._cell))unindexUnit(battle,target);
-    const threshold=target.max*.2;
+    // Existing units retain their 20% rule. New units use N non-lethal HP bands.
+    const threshold=target.a?.spriteId?target.max/(target.a.knockbacks+1):target.max*.2;
     const rounding=Math.max(1e-6,threshold*1e-12);
     if(target.hp>0&&target.staggerBank+rounding>=threshold){
       target.staggerBank%=threshold;
@@ -1545,11 +1581,22 @@
     ctx.fillStyle='#fff';ctx.font='16px sans-serif';
     ctx.fillText(label,-40,-177);ctx.restore();
   }
+  function characterVisual(u){
+    const c=originalById.get(u.a.spriteId);if(!c)return null;
+    // Hand-painted overrides keep their previous priority for ally art.
+    if(u.ally&&art.has('ally:'+u.allyId))return null;
+    const pose=u.staggerLeft>0?'knockback':u.attackAnim>0?'attack':'idle';
+    if(!c._visuals)c._visuals={};
+    if(!c._visuals[pose])c._visuals[pose]={character:c,pose,image:characterImage(c,pose),frame:c.frames[pose]};
+    return c._visuals[pose];
+  }
   function renderActor(u) {
     const x=(u.x-camera)*canvas.width/viewWidth,scale=BASE_VIEW/viewWidth;
-    if(x<-100||x>canvas.width+100)return;
-    const size=u.ally?(u.a.hp>=450?76:58):u.a.size;
-    const img=u.ally?allyArt(u.allyId):enemyArt(u.enemyId);
+    const size=u.a.spriteId?u.a.size:u.ally?(u.a.hp>=450?76:58):u.a.size;
+    const margin=u.a.spriteId?Math.max(100,size*scale*2):100;
+    if(x<-margin||x>canvas.width+margin)return;
+    const visual=characterVisual(u);
+    const img=visual?visual.image:u.ally?allyArt(u.allyId):enemyArt(u.enemyId);
     const phase=u.staggerLeft>0?1-u.staggerLeft/STAGGER_TIME:0;
     // abs(sin(2πt)) peaks twice over one complete stagger.
     const hop=u.staggerLeft>0?17*Math.abs(Math.sin(2*Math.PI*phase)):0;
@@ -1561,11 +1608,15 @@
     ctx.ellipse(0,2,size*.32,7,0,0,Math.PI*2);ctx.fill();
     ctx.save();ctx.translate(lunge,-hop);ctx.rotate(tilt);
     if(imageReady(img)){
-      const {w,h:actualH}=spriteMetrics(img,size);
+      const metrics=visual?null:spriteMetrics(img,size);
+      const w=visual?size*visual.frame.box[2]/visual.frame.box[3]:metrics.w;
+      const actualH=visual?size:metrics.h;
       if(u.hit>0)ctx.filter='brightness(1.5)';
       ctx.save();
-      if(!u.ally&&u.enemyId<20&&!art.has('enemy:'+enemies[u.enemyId].id)&&designChoice('enemy')?.id!=='original')ctx.scale(-1,1);
-      ctx.drawImage(img,-w/2,-actualH,w,actualH);ctx.restore();
+      if(visual&&!u.ally)ctx.scale(-1,1);
+      if(!visual&&!u.ally&&u.enemyId<20&&!art.has('enemy:'+enemies[u.enemyId].id)&&designChoice('enemy')?.id!=='original')ctx.scale(-1,1);
+      if(visual)ctx.drawImage(img,...visual.frame.box,-w/2,-actualH,w,actualH);
+      else ctx.drawImage(img,-w/2,-actualH,w,actualH);ctx.restore();
       ctx.filter='none';
     }else{
       ctx.fillStyle=u.hit>0?'#fff':u.a.color;
@@ -1748,7 +1799,9 @@
     else if(e.code==='ArrowLeft'||e.code==='KeyA')camera=clampCamera(camera-120);
     else if(e.code==='ArrowRight'||e.code==='KeyD')camera=clampCamera(camera+120);
   });
-  wallet();renderStages();renderSquad();renderRoster();refreshImportTargets();
+  wallet();renderStages();renderSquad();renderRoster();renderOriginalEnemies();refreshImportTargets();
+  // Decode once per state; switching images never reads pixels or creates new URLs.
+  for(const c of originalCharacters)for(const pose of ['idle','attack','knockback'])characterImage(c,pose);
   // The first online visit caches only our own game code for later offline visits.
   if(typeof navigator!=='undefined'&&'serviceWorker' in navigator&&
       typeof location!=='undefined'&&location.protocol==='https:'){
