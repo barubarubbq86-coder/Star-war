@@ -46,6 +46,8 @@
     #stageEditor .enemy-grid{grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px;max-height:400px}
     .spawn-choice{background:#13243c;border:1px solid #355675;border-radius:12px;padding:7px;min-width:0}
     .spawn-choice button{width:100%}.spawn-choice label{display:block;font-size:.82rem;color:var(--muted);margin-top:7px}.spawn-choice input{width:100%;margin-top:4px}
+    .enemy-choice{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;overflow-wrap:anywhere;white-space:normal}.enemy-choice img{width:72px;height:64px;object-fit:contain}.enemy-choice span,.enemy-choice small{max-width:100%}.enemy-choice small{font-size:.72rem;color:var(--gold)}
+    #bossGrid{grid-template-columns:repeat(2,minmax(0,1fr));max-height:400px;margin-bottom:16px}#homeEnemyStage{margin-bottom:12px}#originalEnemyCards{margin-top:12px}
     .stage-setting{display:block;max-width:480px;margin:12px 0;color:var(--muted)}.stage-setting[hidden]{display:none}.stage-setting input,.stage-setting select{display:block;width:100%;margin-top:5px}
     .stage-actions{display:flex;gap:8px;flex-wrap:wrap}.stage-actions .bigplay{width:auto;flex:1 1 190px}#stagePreviewName{max-width:100%;padding:0 12px;text-align:center;overflow-wrap:anywhere}
     @media(max-width:760px){#stageEditor .enemy-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -55,14 +57,14 @@
   <script defer src="game.js"></script>
 </head>
 <body><main id="app">
-  <header class="top"><div class="brand">STARLING SIEGE</div><div class="wallet"><span id="xp">XP 0</span><br><span id="cans">★ 150</span></div></header>
+  <header class="top"><div><div class="brand">STARLING SIEGE</div><small class="hint">Phase 2.1</small></div><div class="wallet"><span id="xp">XP 0</span><br><span id="cans">★ 150</span></div></header>
   <nav class="nav" id="nav">
-    <button data-page="home">ホーム</button><button data-page="stages">ステージ</button><button data-page="squad">ユニット</button><button data-page="gacha">ガチャ</button><button data-page="customAllies">自作キャラ 味方</button><button data-page="customEnemies">自作キャラ 敵</button><button data-page="paint">ペイント</button><button data-page="settings">設定</button>
+    <button data-page="home">ホーム</button><button data-page="stages">ステージ</button><button data-page="squad">ユニット</button><button data-page="gacha">ガチャ</button><button data-page="customAllies">自作キャラ 味方</button><button data-page="customEnemies">敵・自作敵</button><button data-page="paint">ペイント</button><button data-page="settings">設定</button>
   </nav>
   <section id="home" class="screen show"><div class="home-grid"><div class="panel hero">
     <div class="hint">ブラウザで遊べる横スクロール防衛ゲーム・絵はこの端末に保存</div><h1>星の砦を<br>守りきれ。</h1>
     <p>手描きの味方や敵を作って、自分だけのステージに挑もう。AndroidではChromeのメニューからホーム画面にも追加できます。</p>
-    <button class="primary bigplay" id="quickPlay">今すぐテストプレイ</button><div id="homeLog" class="log"></div>
+    <button class="bigplay" id="homeEnemyStage">新しい敵7体を選んで遊ぶ</button><button class="primary bigplay" id="quickPlay">今すぐテストプレイ</button><div id="homeLog" class="log"></div>
   </div><div class="panel mascot"><div class="orb"><i class="mouth"></i></div></div></div></section>
   <section id="battle" class="screen"><div class="panel">
     <div class="stats"><strong id="battleTitle">草原</strong><span id="battleMoney">お金 0</span><span id="battleHp">城HP</span></div>
@@ -72,8 +74,8 @@
     <div class="battlebar"><button id="worker">働き手 Lv.1</button><div id="unitButtons"></div><button class="danger" id="retreat">撤退</button></div>
     <p class="hint">仲間を押して出撃。ドラッグで左右に移動。指2本を広げる（ピンチアウト）と縮小して全体が見え、近づける（ピンチイン）と拡大します。攻撃で最大HPの20%を受けるたび2回跳ねます。HPが密集すると表示を間引きます。「HP詳細」で全員の値を確認できます。</p>
   </div></section>
-  <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><p class="hint">数字の大きい敵ほど強く、Bはボスです。</p><div id="stageCards" class="cards"></div>
-    <details id="stageEditor" class="import-panel"><summary>自作ステージを作る・編集する</summary><label class="stage-setting" for="stageName">ステージ名<input id="stageName" type="text" maxlength="40" autocomplete="off" value="自作ステージ1"></label><div id="stageBuilder" class="two"><div><div class="builder" id="stageControls"></div><h3>登場するモブ</h3><p class="hint">モブを選び、種類ごとに出現間隔を入力します。最初の1体も設定秒数後に出現します（0.1秒以上）。端末を守るため、同時に出現するモブは最大120体です。</p><div id="enemyGrid" class="enemy-grid"></div></div><div><label class="stage-setting" for="bossTrigger">ボスの出現条件<select id="bossTrigger"><option value="time">開始から指定した秒数後</option><option value="castle">敵の塔が攻撃されたら</option></select></label><label id="bossTimeRow" class="stage-setting" for="bossTime">開始から何秒後<input id="bossTime" type="number" min="0" step="any" value="31" inputmode="decimal"></label><div class="preview" id="stagePreview"><h2 id="stagePreviewName">自作ステージ1</h2></div><p id="stageSummary" class="log" role="status"></p><div class="stage-actions"><button class="primary bigplay" id="createStage">このステージを作る</button><button id="cancelStageEdit" hidden>編集をやめる</button></div></div></div></details>
+  <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><button class="primary bigplay" id="newEnemyStage" aria-controls="stageEditor">新しい敵7体を選んでステージを作る</button><p class="hint">新しい敵は下の自作ステージで選べます。基本8ステージの敵はこれまでどおりです。</p><div id="stageCards" class="cards"></div>
+    <details id="stageEditor" class="import-panel"><summary>自作ステージを作る・編集する</summary><label class="stage-setting" for="stageName">ステージ名<input id="stageName" type="text" maxlength="40" autocomplete="off" value="自作ステージ1"></label><div id="stageBuilder" class="two"><div><div class="builder" id="stageControls"></div><h3>登場するモブ</h3><p class="hint">モブを選び、種類ごとに出現間隔を入力します。最初の1体も設定秒数後に出現します（0.1秒以上）。端末を守るため、同時に出現するモブは最大120体です。</p><div id="enemyGrid" class="enemy-grid"></div></div><div><h3>登場するボス（1体選択）</h3><div id="bossGrid" class="enemy-grid" aria-label="ボス候補"></div><label class="stage-setting" for="bossTrigger">ボスの出現条件<select id="bossTrigger"><option value="time">開始から指定した秒数後</option><option value="castle">敵の塔が攻撃されたら</option></select></label><label id="bossTimeRow" class="stage-setting" for="bossTime">開始から何秒後<input id="bossTime" type="number" min="0" step="any" value="31" inputmode="decimal"></label><div class="preview" id="stagePreview"><h2 id="stagePreviewName">自作ステージ1</h2></div><p id="stageSummary" class="log" role="status"></p><div class="stage-actions"><button class="primary bigplay" id="createStage">このステージを作る</button><button id="cancelStageEdit" hidden>編集をやめる</button></div></div></div></details>
   </div></section>
   <section id="squad" class="screen"><div class="panel"><h2>ユニット</h2><p class="hint">追加の「ネコ」「ながネコ」はこの一覧で編成できます。通常・攻撃・ノックバックの3つの絵が戦闘中に切り替わります。</p><p class="hint">最大8体を編成・育成できます。手描き画像は「自作キャラ 味方」から設定できます。</p><div id="allyCards" class="cards"></div></div></section>
   <section id="gacha" class="screen"><div class="panel"><h2>星降りガチャ</h2><div class="two"><button class="bigplay" id="pull30">1回引く ★30</button><button class="bigplay primary" id="pull100">高レア ★100</button></div><div id="gachaLog" class="log" role="status"></div><p class="hint">同じ仲間が出た場合はプラス値が1上がります。</p></div></section>
@@ -83,7 +85,7 @@
       <div class="import-controls"><div><label for="greenStrength">緑の除去強度 <output id="strengthValue">55</output></label><input id="greenStrength" type="range" min="0" max="100" value="55"><p class="hint">髪や体の緑が消える場合は弱めてください。</p></div><div class="preview"><canvas id="chromaPreview" width="320" height="320" aria-label="背景を除去した画像のプレビュー"></canvas></div></div>
       <button class="primary" id="applyArt" disabled>プレビューの画像を適用</button><p id="importStatus" class="log" role="status"></p>
     </div></div></div></section>
-  <section id="customEnemies" class="screen"><div class="panel"><h2>自作キャラ・敵</h2><p class="hint">ペイントで作った敵もここに並びます。名前・HP・攻撃力・モブ／ボスなどを編集できます。HP・攻撃力・移動速度に上限はありません（1以上）。</p><details class="import-panel"><summary>オリジナル敵7体（自作ステージで選択）</summary><p class="hint">モブ6体とボスのぶんぶん先生を、ステージの編集画面で選べます。未指定能力は仮設定です。ヲモさんの特殊能力は未発動です。</p><div id="originalEnemyCards" class="cards"></div></details><button id="newCustomEnemy" class="primary">絵を描いて敵を作る</button><p id="customEnemyStatus" class="log" role="status"></p><div id="customEnemyCards" class="cards"></div><div id="enemyImportHost"></div>
+  <section id="customEnemies" class="screen"><div class="panel"><h2>敵・自作敵</h2><p class="hint">ペイントで作った敵もここに並びます。名前・HP・攻撃力・モブ／ボスなどを編集できます。HP・攻撃力・移動速度に上限はありません（1以上）。</p><details open class="import-panel"><summary>新しいオリジナル敵7体（自作ステージで選択）</summary><p class="hint">モブ6体とボスのぶんぶん先生を、ステージの編集画面で選べます。未指定能力は仮設定です。ヲモさんの特殊能力は未発動です。</p><div id="originalEnemyCards" class="cards"></div></details><button id="newCustomEnemy" class="primary">絵を描いて敵を作る</button><p id="customEnemyStatus" class="log" role="status"></p><div id="customEnemyCards" class="cards"></div><div id="enemyImportHost"></div>
     <details class="import-panel"><summary>既存の敵20体の名前・画像を編集</summary><p class="hint">M＝モブ、B＝ボス。数字が大きいほど強くなります。</p><label for="enemyBatchUpload">敵画像をまとめて読み込む（PNG・JPEG・WebP、1枚8MB以下）</label><input id="enemyBatchUpload" type="file" accept="image/png,image/jpeg,image/webp" multiple><p class="hint">ファイル名の数字で自動配置します。例：M-01.png、B-20.png。画像はGitHubへ送られません。</p><p id="enemyImportStatus" class="log" role="status"></p><div id="enemyRoster" class="roster"></div></details>
   </div></section>
   <section id="paint" class="screen"><div class="panel">

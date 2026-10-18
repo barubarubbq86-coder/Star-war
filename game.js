@@ -532,7 +532,14 @@
       const stats=document.createElement('p'),a=c.stats;
       stats.textContent='HP '+a.hp+' / 攻撃 '+a.atk+' / 間隔 '+Number(a.interval.toFixed(3))+'秒 / 射程 '+a.range+' / 速度 '+a.speed+' / KB '+a.knockbacks+'回';
       const note=document.createElement('p');note.textContent=c.description;
-      card.append(title,img,stats,note);wrap.append(card);
+      const choose=document.createElement('button');choose.className='primary';
+      choose.textContent=c.type==='B'?'ボスにしてステージを作る':'モブにしてステージを作る';
+      choose.onclick=()=>{
+        if(c.type==='B')sp.boss=c.slot;
+        else if(!sp.pool.includes(c.slot))sp.pool.push(c.slot);
+        openEnemyStageEditor();
+      };
+      card.append(title,img,stats,note,choose);wrap.append(card);
     }
   }
   function renderCustomEnemies() {
@@ -739,10 +746,35 @@
     renderStageBuilder();
     $('stageEditor').scrollIntoView?.({behavior:'smooth',block:'start'});
   }
+  function openEnemyStageEditor(){
+    page('stages');$('stageEditor').open=true;
+    $('stageEditor').scrollIntoView?.({behavior:'smooth',block:'start'});
+  }
+  $('newEnemyStage').onclick=openEnemyStageEditor;
+  $('homeEnemyStage').onclick=openEnemyStageEditor;
+  function enemyChoice(i,selected,boss=false){
+    const button=document.createElement('button'),img=document.createElement('img');
+    const name=document.createElement('span'),mark=document.createElement('small');
+    button.className='enemy-choice';button.dataset.enemyId=String(i);
+    button.dataset.enemyKind=boss?'boss':'mob';
+    const source=enemyArt(i);img.src=source?.src||source?.toDataURL()||'';img.alt='';
+    img.width=72;img.height=64;
+    name.textContent=enemyName(i);
+    mark.textContent=(selected?'✓ 選択中':'＋ 選ぶ')+(originalEnemies.has(i)?'・新しい敵':'');
+    button.setAttribute('aria-label',enemyName(i)+(boss?'・ボス':'・モブ'));
+    button.setAttribute('aria-pressed',String(selected));
+    if(selected)button.classList.add('active');
+    button.append(img,name,mark);return button;
+  }
   function renderStageBuilder() {
+    const mobScroll=$('enemyGrid').scrollTop,bossScroll=$('bossGrid').scrollTop;
+    const focused=document.activeElement?.dataset;
+    let restoreFocus;
     const choices=allEnemies();
-    const bosses=choices.map((e,i)=>e.type==='B'?i:-1).filter(i=>i>=0);
-    const mobs=choices.map((e,i)=>e.type==='M'?i:-1).filter(i=>i>=0);
+    // Promote new originals in the editor only; stable saved IDs and pools stay intact.
+    const newFirst=(a,b)=>Number(originalEnemies.has(b))-Number(originalEnemies.has(a));
+    const bosses=choices.map((e,i)=>e.type==='B'?i:-1).filter(i=>i>=0).sort(newFirst);
+    const mobs=choices.map((e,i)=>e.type==='M'?i:-1).filter(i=>i>=0).sort(newFirst);
     if(!bosses.includes(sp.boss))sp.boss=bosses[0];
     sp.pool=sp.pool.filter(i=>mobs.includes(i));
     const wrap=$('stageControls');wrap.replaceChildren();
@@ -751,16 +783,12 @@
         ()=>{sp[key]=(sp[key]-1+max)%max;renderStageBuilder();},
         ()=>{sp[key]=(sp[key]+1)%max;renderStageBuilder();});
     }
-    const bossControl=document.createElement('div'),bossLabel=document.createElement('label');
-    const bossSelect=document.createElement('select');
-    bossControl.className='control';bossLabel.textContent='登場するボス';
+    const bossGrid=$('bossGrid');bossGrid.replaceChildren();
     for(const i of bosses){
-      const option=document.createElement('option');option.value=String(i);
-      option.textContent=enemyName(i);bossSelect.append(option);
+      const button=enemyChoice(i,sp.boss===i,true);
+      if(focused?.enemyKind==='boss'&&focused.enemyId===String(i))restoreFocus=button;
+      button.onclick=()=>{sp.boss=i;renderStageBuilder();};bossGrid.append(button);
     }
-    bossSelect.value=String(sp.boss);bossSelect.style.width='100%';
-    bossSelect.onchange=()=>{sp.boss=Number(bossSelect.value);renderStageBuilder();};
-    bossLabel.append(bossSelect);bossControl.append(bossLabel);wrap.append(bossControl);
     $('stagePreview').style.background='radial-gradient(circle,'+color[sp.theme]+',#0e192a 70%)';
     $('stagePreviewName').textContent=$('stageName').value.trim()||'自作ステージ';
     $('stageSummary').textContent='難易度 '+(sp.difficulty+1)+'・モブ'+sp.pool.length+
@@ -768,10 +796,8 @@
     const grid=$('enemyGrid');grid.replaceChildren();
     mobs.forEach(i=>{
       const row=document.createElement('div');row.className='spawn-choice';
-      const selected=sp.pool.includes(i),button=document.createElement('button');
-      button.textContent=(selected?'☑ ':'□ ')+enemyName(i);
-      button.setAttribute('aria-pressed',String(selected));
-      if(selected)button.classList.add('active');
+      const selected=sp.pool.includes(i),button=enemyChoice(i,selected);
+      if(focused?.enemyKind==='mob'&&focused.enemyId===String(i))restoreFocus=button;
       button.onclick=()=>{
         if(sp.pool.includes(i))sp.pool=sp.pool.filter(n=>n!==i);
         else sp.pool.push(i);
@@ -788,6 +814,8 @@
       }
       grid.append(row);
     });
+    grid.scrollTop=mobScroll;bossGrid.scrollTop=bossScroll;
+    restoreFocus?.focus({preventScroll:true});
   }
   $('stageName').oninput=()=>{
     $('stagePreviewName').textContent=$('stageName').value.trim()||'自作ステージ';

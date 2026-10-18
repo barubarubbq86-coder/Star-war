@@ -1,0 +1,734 @@
+{
+  "regression": {
+    "date": "2026-10-18T07:07:23.622Z",
+    "environment": {
+      "node": "v24.19.0",
+      "cpu": "AMD EPYC 9V74 80-Core Processor",
+      "render": "@napi-rs/canvas CPU raster; simulated DOM, not a browser"
+    },
+    "regression": [
+      "40条件×240ステップ: 状態が完全一致（通常/密集/範囲/巨大数/多種タイマー）",
+      "60条件×90ステップ: 死亡・同距離・背後9境界・範囲攻撃の順序一致",
+      "敵城/自城への攻撃・勝敗・XP/星缶・基本と自作の進行分離",
+      "両陣営の累積20%よろけ（傾き・2回バウンドの数式は変更なし）",
+      "モブなし・種類別0.1秒タイマー・ボス2条件/1回限定・120体制限と待機復帰",
+      "逆方向ピンチ（合成Pointerイベント）・ドラッグ・3種ズームボタン",
+      "4/10/60fpsの3秒進行・資金・CD・モブ/ボス一致、長時間停止の追いつき上限、非表示/復帰",
+      "既存v7・自作20+20/巨大有限値・旧ステージ補完・保存/再読込・画像DB優先・素材設定永続化",
+      "HP4モード×3倍率・全員HP詳細・密集描画順・不変HUDのDOM書き込みゼロ（模擬DOM）"
+    ],
+    "performance": [
+      {
+        "name": "通常6体",
+        "count": 6,
+        "measurements": {
+          "before": {
+            "updateMedian": 0.010616000001391512,
+            "updateP95": 0.036474999998972635,
+            "drawMedian": 0.1720900000000256,
+            "drawP95": 0.29959100000087346,
+            "totalMedian": 0.18879399999968882,
+            "totalP95": 0.33174999999937427,
+            "endUnits": 6
+          },
+          "after": {
+            "updateMedian": 0.012367999999696622,
+            "updateP95": 0.020570999999108608,
+            "drawMedian": 0.1560460000000603,
+            "drawP95": 0.2616150000012567,
+            "totalMedian": 0.16741199999887613,
+            "totalP95": 0.27945199999885517,
+            "endUnits": 6
+          }
+        }
+      },
+      {
+        "name": "50体",
+        "count": 50,
+        "measurements": {
+          "before": {
+            "updateMedian": 0.1704780000000028,
+            "updateP95": 0.26141500000085216,
+            "drawMedian": 0.9428420000003825,
+            "drawP95": 1.2102350000004662,
+            "totalMedian": 1.116704000000027,
+            "totalP95": 1.4265009999999165,
+            "endUnits": 50
+          },
+          "after": {
+            "updateMedian": 0.17684700000063458,
+            "updateP95": 0.22776300000077754,
+            "drawMedian": 0.9356709999992745,
+            "drawP95": 1.1660289999999804,
+            "totalMedian": 1.104245999998966,
+            "totalP95": 1.336264999999912,
+            "endUnits": 50
+          }
+        }
+      },
+      {
+        "name": "100体",
+        "count": 100,
+        "measurements": {
+          "before": {
+            "updateMedian": 0.3289459999996325,
+            "updateP95": 0.4446810000008554,
+            "drawMedian": 1.7585419999995793,
+            "drawP95": 2.159005999999863,
+            "totalMedian": 2.064182999998593,
+            "totalP95": 2.521521999999095,
+            "endUnits": 100
+          },
+          "after": {
+            "updateMedian": 0.3479350000015984,
+            "updateP95": 0.44145600000047125,
+            "drawMedian": 1.7304199999998673,
+            "drawP95": 1.9998360000008688,
+            "totalMedian": 2.0599659999988944,
+            "totalP95": 2.4185470000011264,
+            "endUnits": 100
+          }
+        }
+      },
+      {
+        "name": "味方120+敵120",
+        "count": 240,
+        "measurements": {
+          "before": {
+            "updateMedian": 0.5083660000000236,
+            "updateP95": 0.7170210000003863,
+            "drawMedian": 4.024179000000004,
+            "drawP95": 5.192269999999553,
+            "totalMedian": 4.541617999999289,
+            "totalP95": 5.863521999999648,
+            "endUnits": 240
+          },
+          "after": {
+            "updateMedian": 0.529939000000013,
+            "updateP95": 0.6481579999999667,
+            "drawMedian": 3.879910999999993,
+            "drawP95": 4.767919999998412,
+            "totalMedian": 4.4050029999998515,
+            "totalP95": 5.28710399999909,
+            "endUnits": 240
+          }
+        }
+      },
+      {
+        "name": "多種0.1秒",
+        "count": 120,
+        "measurements": {
+          "before": {
+            "updateMedian": 0.7050230000022566,
+            "updateP95": 0.9613700000008976,
+            "drawMedian": 2.7345640000021376,
+            "drawP95": 3.7628740000000107,
+            "totalMedian": 3.400018000000273,
+            "totalP95": 4.546856999997544,
+            "endUnits": 181
+          },
+          "after": {
+            "updateMedian": 0.7445829999996931,
+            "updateP95": 1.1409910000002128,
+            "drawMedian": 2.883628999999928,
+            "drawP95": 4.046281999999337,
+            "totalMedian": 3.5698929999998654,
+            "totalP95": 4.83538199999748,
+            "endUnits": 181
+          }
+        }
+      },
+      {
+        "name": "範囲240体",
+        "count": 240,
+        "measurements": {
+          "before": {
+            "updateMedian": 0.5165090000009513,
+            "updateP95": 1.772794000000431,
+            "drawMedian": 3.9052789999987,
+            "drawP95": 4.865878000000521,
+            "totalMedian": 4.5647140000000945,
+            "totalP95": 6.297867000001133,
+            "endUnits": 240
+          },
+          "after": {
+            "updateMedian": 0.5425579999973706,
+            "updateP95": 1.9220080000013695,
+            "drawMedian": 3.9118989999988116,
+            "drawP95": 4.6137479999997595,
+            "totalMedian": 4.5804970000026515,
+            "totalP95": 6.108993000001647,
+            "endUnits": 240
+          }
+        }
+      },
+      {
+        "name": "巨大数100体",
+        "count": 100,
+        "measurements": {
+          "before": {
+            "updateMedian": 0.20037299999967217,
+            "updateP95": 0.2363359999981185,
+            "drawMedian": 1.6130620000003546,
+            "drawP95": 1.9859050000013667,
+            "totalMedian": 1.8192929999968328,
+            "totalP95": 2.2143190000024333,
+            "endUnits": 100
+          },
+          "after": {
+            "updateMedian": 0.2130620000025374,
+            "updateP95": 0.26056299999982,
+            "drawMedian": 1.6006130000023404,
+            "drawP95": 1.887485999999626,
+            "totalMedian": 1.819242999998096,
+            "totalP95": 2.133207000002585,
+            "endUnits": 100
+          }
+        }
+      }
+    ],
+    "lowFPS": [
+      {
+        "fps": 60,
+        "time": 2.9999999999999942,
+        "money": 278.99999999999943,
+        "cool": 5.655198531684391e-15,
+        "count": 146,
+        "boss": true
+      },
+      {
+        "fps": 10,
+        "time": 2.9999999999999942,
+        "money": 278.99999999999943,
+        "cool": 5.655198531684391e-15,
+        "count": 146,
+        "boss": true
+      },
+      {
+        "fps": 4,
+        "time": 2.9999999999999942,
+        "money": 278.99999999999943,
+        "cool": 5.655198531684391e-15,
+        "count": 146,
+        "boss": true
+      }
+    ],
+    "assetsDecoded": 9,
+    "labelGeometry": [],
+    "memory": {
+      "method": "6 rounds x 240 updates; forced GC at boundaries; Node whole-process JS heap",
+      "bytes": [
+        35908592,
+        36774920,
+        20922624,
+        21751088,
+        22612840,
+        40005048
+      ]
+    }
+  },
+  "characters": {
+    "date": "2026-10-18T07:07:24.924Z",
+    "environment": "Node VM, mock DOM/IndexedDB, native CPU Canvas; no Android/browser UI claims",
+    "checks": [
+      "9 characters, 27 unique files, native decoder reads all 27 at 384x384",
+      "Published 15 ally/20 enemy definitions and 8 base stages unchanged",
+      "Full 20+20 legacy custom slots, progression, levels, plus values, deck and designs preserved; new IDs/deck/stages round-trip; six mobs and boss spawn via existing timers",
+      "Adding the final custom ally/enemy uses old IDs 34/39; optional hand-painted original-ally override keeps priority",
+      "All 9 spawn; actual hit damage/interval verified; attack=.24s and returns; KB=.74s priority and returns; 27 actual drawImage sources and common center/foot anchors verified",
+      "10,000 animation selections retain exactly 27 cached image objects",
+      "Existing enemy screen lists 7 originals; existing stage builder exposes all six added mob names",
+      "31 real local HTTP requests under /starling-siege/ return 200 with exact expected bytes, including all 27 nested PNG paths"
+    ],
+    "performance": [
+      {
+        "count": 50,
+        "idle": {
+          "drawMedian": 0.8300719999999728,
+          "drawP95": 1.1116359999999759
+        },
+        "threeStates": {
+          "drawMedian": 0.8648639999998977,
+          "drawP95": 1.216654999999946
+        }
+      },
+      {
+        "count": 100,
+        "idle": {
+          "drawMedian": 1.5359260000000177,
+          "drawP95": 2.4925989999999274
+        },
+        "threeStates": {
+          "drawMedian": 1.6521620000000894,
+          "drawP95": 2.6969870000000356
+        }
+      },
+      {
+        "count": 240,
+        "idle": {
+          "drawMedian": 3.9784300000001167,
+          "drawP95": 5.914348999999675
+        },
+        "threeStates": {
+          "drawMedian": 5.1230460000001585,
+          "drawP95": 6.50687199999993
+        }
+      }
+    ],
+    "combat": [
+      {
+        "id": "ally_neko",
+        "damage": 26,
+        "interval": 1,
+        "knockbackBands": 5
+      },
+      {
+        "id": "ally_naganeko",
+        "damage": 11,
+        "interval": 1.25,
+        "knockbackBands": 5
+      },
+      {
+        "id": "enemy_womosan",
+        "damage": 30000,
+        "interval": 7.5,
+        "knockbackBands": 8
+      },
+      {
+        "id": "enemy_rourusan",
+        "damage": 350,
+        "interval": 4.666666666666666,
+        "knockbackBands": 5
+      },
+      {
+        "id": "enemy_take",
+        "damage": 32,
+        "interval": 1.3,
+        "knockbackBands": 5
+      },
+      {
+        "id": "enemy_kangaryu",
+        "damage": 250,
+        "interval": 1.05,
+        "knockbackBands": 1
+      },
+      {
+        "id": "enemy_gomasama",
+        "damage": 150,
+        "interval": 1.3,
+        "knockbackBands": 1
+      },
+      {
+        "id": "enemy_paon",
+        "damage": 870,
+        "interval": 2.5,
+        "knockbackBands": 5
+      },
+      {
+        "id": "enemy_bunbunsensei",
+        "damage": 3450,
+        "interval": 1.38,
+        "knockbackBands": 30
+      }
+    ],
+    "geometry": [
+      {
+        "id": "ally_neko",
+        "pose": "idle",
+        "source": [
+          60,
+          92,
+          253,
+          246
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 64
+      },
+      {
+        "id": "ally_neko",
+        "pose": "attack",
+        "source": [
+          34,
+          79,
+          342,
+          250
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 64
+      },
+      {
+        "id": "ally_neko",
+        "pose": "knockback",
+        "source": [
+          45,
+          67,
+          314,
+          271
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 64
+      },
+      {
+        "id": "ally_naganeko",
+        "pose": "idle",
+        "source": [
+          119,
+          41,
+          147,
+          327
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 84
+      },
+      {
+        "id": "ally_naganeko",
+        "pose": "attack",
+        "source": [
+          56,
+          44,
+          291,
+          318
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 84
+      },
+      {
+        "id": "ally_naganeko",
+        "pose": "knockback",
+        "source": [
+          88,
+          33,
+          228,
+          336
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 84
+      },
+      {
+        "id": "enemy_womosan",
+        "pose": "idle",
+        "source": [
+          69,
+          25,
+          245,
+          338
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 90
+      },
+      {
+        "id": "enemy_womosan",
+        "pose": "attack",
+        "source": [
+          36,
+          78,
+          330,
+          247
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 90
+      },
+      {
+        "id": "enemy_womosan",
+        "pose": "knockback",
+        "source": [
+          16,
+          35,
+          360,
+          320
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 90
+      },
+      {
+        "id": "enemy_rourusan",
+        "pose": "idle",
+        "source": [
+          59,
+          75,
+          290,
+          250
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 86
+      },
+      {
+        "id": "enemy_rourusan",
+        "pose": "attack",
+        "source": [
+          21,
+          87,
+          355,
+          213
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 86
+      },
+      {
+        "id": "enemy_rourusan",
+        "pose": "knockback",
+        "source": [
+          25,
+          73,
+          349,
+          232
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 86
+      },
+      {
+        "id": "enemy_take",
+        "pose": "idle",
+        "source": [
+          109,
+          47,
+          178,
+          294
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 82
+      },
+      {
+        "id": "enemy_take",
+        "pose": "attack",
+        "source": [
+          23,
+          49,
+          341,
+          287
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 82
+      },
+      {
+        "id": "enemy_take",
+        "pose": "knockback",
+        "source": [
+          66,
+          26,
+          265,
+          315
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 82
+      },
+      {
+        "id": "enemy_kangaryu",
+        "pose": "idle",
+        "source": [
+          29,
+          31,
+          330,
+          323
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 80
+      },
+      {
+        "id": "enemy_kangaryu",
+        "pose": "attack",
+        "source": [
+          18,
+          31,
+          358,
+          316
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 80
+      },
+      {
+        "id": "enemy_kangaryu",
+        "pose": "knockback",
+        "source": [
+          29,
+          20,
+          335,
+          335
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 80
+      },
+      {
+        "id": "enemy_gomasama",
+        "pose": "idle",
+        "source": [
+          101,
+          131,
+          182,
+          181
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 66
+      },
+      {
+        "id": "enemy_gomasama",
+        "pose": "attack",
+        "source": [
+          29,
+          81,
+          336,
+          225
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 66
+      },
+      {
+        "id": "enemy_gomasama",
+        "pose": "knockback",
+        "source": [
+          92,
+          78,
+          206,
+          221
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 66
+      },
+      {
+        "id": "enemy_paon",
+        "pose": "idle",
+        "source": [
+          46,
+          89,
+          297,
+          231
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 102
+      },
+      {
+        "id": "enemy_paon",
+        "pose": "attack",
+        "source": [
+          13,
+          69,
+          368,
+          250
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 102
+      },
+      {
+        "id": "enemy_paon",
+        "pose": "knockback",
+        "source": [
+          31,
+          54,
+          331,
+          282
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 102
+      },
+      {
+        "id": "enemy_bunbunsensei",
+        "pose": "idle",
+        "source": [
+          23,
+          66,
+          355,
+          270
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 126
+      },
+      {
+        "id": "enemy_bunbunsensei",
+        "pose": "attack",
+        "source": [
+          6,
+          49,
+          375,
+          280
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 126
+      },
+      {
+        "id": "enemy_bunbunsensei",
+        "pose": "knockback",
+        "source": [
+          21,
+          45,
+          358,
+          276
+        ],
+        "center": 0,
+        "foot": 0,
+        "height": 126
+      }
+    ],
+    "http": {
+      "prefix": "/starling-siege/",
+      "requests": 31,
+      "status": 200
+    }
+  },
+  "selection": {
+    "kind": "Node VM + simulated DOM/IndexedDB, actual production handlers and native PNG decoder; not browser/Android",
+    "checks": [
+      "Actual IDs/names/images and M/B match; new mobs first, new boss first; all old20 + saved custom20 retain image choices; 47 candidate images decode",
+      "Home/stage CTA opens editor; each of 7 gallery actions selects correct enemy without duplicate pool entries",
+      "Actual selection/toggle/interval/save/reload/reedit/stage-card deploy handlers -> all 7 timed spawns; existing v7 wallet/progress/upgrades/custom20+20/designs/stage/art/draft preserved; scroll retained",
+      "Boss46 appears via first enemy-castle attack as well as time=0; ordinary stage mode unchanged"
+    ]
+  },
+  "extra": {
+    "pass": true,
+    "tests": [
+      "New-ally equip, XP upgrade, persistence and leveled spawn HP via existing UI handlers",
+      "No damage at range+18+0.1, hit at existing range+18 boundary",
+      "Missing characters.js stops before any save mutation"
+    ]
+  },
+  "serviceWorker": {
+    "test": "Service Worker install/activation/offline fetch VM simulation, not browser",
+    "cachedFiles": 44,
+    "otherAppPreserved": true,
+    "v8ScopedCacheRemoved": true,
+    "externalRequestIgnored": true,
+    "phase2CacheRemoved": true
+  },
+  "formalBaseSha256": "edc4bc7f803cc4f3b0da4f79807119e505dad9943ec95b9142b0b6a3ccb708fa",
+  "runtimeSha256": {
+    "game.js": "a7f35735bc2df52b7f6f82ff5437397a411ee3a07d816302bea11faedea57ae3",
+    "index.html": "453dc6c2ee14acbbc4876aa16c4b51223f8ad98605db77273f80e95a8229a228",
+    "sw.js": "1a837274a7c0927cb04f75d23d1e5afcc39d0f7aed2a9469c752077b2d6f65c5",
+    "characters.js": "45248573dbf945751d0cfc462538a623a54781e8ab620ff645b5dc6f4bca3b34"
+  },
+  "packageChecks": {
+    "files": 58,
+    "rootIndex": true,
+    "uniqueHtmlIds": true,
+    "literalDomIdsExist": true,
+    "deferOrderCorrect": true,
+    "pngsDecoded": 27,
+    "zipCrcAndFileBytes": true
+  }
+}
