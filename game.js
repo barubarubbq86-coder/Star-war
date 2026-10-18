@@ -1,4 +1,4 @@
-// Starling Siege: Phase 3. The previous battle, art and save paths remain in use.
+// Starling Siege: Phase 3.1. The previous battle, art and save paths remain in use.
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -17,6 +17,9 @@
        s.waves.some(w=>!originalEnemies.has(w.id))||
        (s.boss&&!originalEnemies.has(s.boss.id)))){
     $('homeLog').textContent='ステージデータを読み込めませんでした。配信ファイルを確認してください。保存データは変更していません。';return;
+  }
+  if(!window.SIEGE_BACKUP){
+    $('homeLog').textContent='バックアップ機能のファイルを読み込めませんでした。更新ファイルを確認してください。保存データは変更していません。';return;
   }
   const characterImages=new Map();
   function originalStats(c){return {...c.stats,id:c.id,name:c.name,type:c.type,spriteId:c.id,color:c.side==='ally'?'#a7edce':'#f3b5ba',rank:1};}
@@ -225,7 +228,9 @@
     image.hidden=!file;if(file)image.src='./assets/'+file;
     image.alt=choice?.name||'従来の見た目';
   }
+  let restoreLocked=false;
   function save() {
+    if(restoreLocked)return false;
     try { localStorage.setItem(stateKey,JSON.stringify(state)); wallet(); return true; }
     catch { $('homeLog').textContent='保存領域がいっぱいです。端末の空き容量を確認してください。'; return false; }
   }
@@ -271,7 +276,7 @@
   let selectedChapter=Math.min(3,Math.floor(state.cleared/7));
   function log(message) { $('homeLog').textContent=message; }
   function page(id) {
-    if (battle && id!=='battle') { battle=null;hpLabels.length=0;cancelAnimationFrame(frame); }
+    if (battle && id!=='battle') { if(retreatDialog.open)retreatDialog.close();battle=null;hpLabels.length=0;cancelAnimationFrame(frame); }
     document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('show',el.id===id));
     if (id==='stages') { renderStages();renderStageBuilder(); }
     if (id==='squad') renderSquad();
@@ -298,6 +303,15 @@
   async function loadArt() {
     try {
       database=await openDatabase();
+      try{
+        if(await window.SIEGE_BACKUP.recover(database,localStorage)){
+          location.reload();return;
+        }
+      }catch(error){
+        restoreLocked=true;$('app').inert=true;
+        $('homeLog').textContent='復元の整合確認を完了できません。サイトデータを消さずに、この画面を再読み込みしてください：'+error.message;
+        return;
+      }
       const tx=database.transaction('art','readonly'),store=tx.objectStore('art');
       const entries=await new Promise((resolve,reject)=>{
         const req=store.openCursor(),items=[];
@@ -316,7 +330,7 @@
         if(imageReady(draft))restore();
         else draft.addEventListener('load',restore,{once:true});
       }
-    } catch { $('importStatus').textContent='このブラウザでは画像の保存を使えません。通常のブラウザで開いてください。'; }
+    } catch(error) { $('importStatus').textContent='画像を読み込めませんでした。復元の確認中なら、この画面のままデータを消さずに確認してください：'+error.message; }
   }
   function blobImage(blob) {
     const url=URL.createObjectURL(blob),img=new Image();
@@ -410,6 +424,71 @@
     return enemyFallbacks.get(i);
   }
   const artReady=loadArt();
+
+  // Exact localStorage JSON plus every Blob in starlingSiegeArt/art, including
+  // paintings, uploaded pictures and the draft. No server request is involved.
+  const backup=window.SIEGE_BACKUP,backupStatus=$('backupStatus'),restoreDialog=$('restoreDialog');
+  let restoreCandidate=null,backupBusy=false;
+  $('backupDownload').onclick=async()=>{
+    if(backupBusy)return;backupBusy=true;$('backupDownload').disabled=true;
+    backupStatus.textContent='画像を含むバックアップを準備中…';
+    try{
+      await artReady;if(!database)throw Error('画像保存領域を読み取れません');
+      const raw=localStorage.getItem(stateKey),items=await backup.collect(database);
+      // An unsaved paint stroke is included without writing to device storage.
+      if(draftTimer&&paintTouched){
+        const draft=await new Promise(resolve=>paintCanvas.toBlob(resolve,'image/png'));
+        if(!draft)throw Error('下書きを読み取れません');
+        const index=items.findIndex(i=>i.key==='paint:draft');
+        if(index>=0)items[index]={key:'paint:draft',blob:draft};
+        else items.push({key:'paint:draft',blob:draft});
+      }
+      const file=await backup.create(raw,items),url=URL.createObjectURL(file);
+      const link=document.createElement('a');link.href=url;
+      link.download='starling-siege-backup-'+new Date().toISOString().slice(0,10)+'.ssbackup';
+      document.body.append(link);link.click();link.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+      backupStatus.textContent='バックアップを保存しました。端末のダウンロード一覧でファイルを確認してください。';
+    }catch(error){backupStatus.textContent='書き出せませんでした：'+error.message;}
+    finally{backupBusy=false;$('backupDownload').disabled=false;}
+  };
+  $('backupFile').onchange=async event=>{
+    if(backupBusy)return;restoreCandidate=null;
+    const file=event.target.files?.[0];if(!file)return;
+    backupBusy=true;backupStatus.textContent='ファイルを検証中…';
+    try{
+      await artReady;if(!database)throw Error('画像保存領域を読み取れません');
+      const parsed=await backup.read(file);restoreCandidate=parsed;
+      const s=parsed.summary;
+      $('restoreSummary').textContent='作成 '+new Date(parsed.createdAt).toLocaleString('ja-JP')+
+        '／セーブv'+parsed.saveVersion+'／進行 '+s.cleared+'/28／XP '+s.xp+
+        '／星缶 '+s.cans+'／自作面 '+s.stages+'・味方 '+s.allies+
+        '・敵 '+s.enemies+'／画像 '+s.images+'（下書き '+s.paint+'）';
+      backupStatus.textContent='内容を確認し、復元する場合だけ上書きを選んでください。';
+      restoreDialog.showModal();
+    }catch(error){backupStatus.textContent='このファイルは復元できません：'+error.message;}
+    finally{backupBusy=false;event.target.value='';}
+  };
+  $('cancelRestore').onclick=()=>restoreDialog.close();
+  restoreDialog.addEventListener('click',event=>{
+    if(event.target===restoreDialog)restoreDialog.close();
+  });
+  $('confirmRestore').onclick=async()=>{
+    if(backupBusy||!restoreCandidate)return;
+    const parsed=restoreCandidate;restoreCandidate=null;restoreDialog.close();
+    backupBusy=true;$('backupDownload').disabled=true;$('backupFile').disabled=true;
+    restoreLocked=true;$('app').inert=true;
+    clearTimeout(draftTimer);draftTimer=0;++paintLoad;
+    backupStatus.textContent='復元中です。この画面を閉じないでください…';
+    try{
+      await backup.restore(parsed,localStorage,database);
+      backupStatus.textContent='復元しました。ゲームを再読み込みしています…';
+      location.reload();
+    }catch(error){backupStatus.textContent='復元を中止しました：'+error.message;
+      if(paintTouched)saveDraftSoon();
+      restoreLocked=false;$('app').inert=false;
+      backupBusy=false;$('backupDownload').disabled=false;$('backupFile').disabled=false;}
+  };
 
   function renderStages() {
     const wrap=$('stageCards'),customWrap=$('customStageCards'),tabs=$('chapterTabs');
@@ -1373,6 +1452,7 @@
   function startBattle(index) {
     const stage=stages()[index];
     if(!stage||(index<baseStages.length&&index>state.cleared))return;
+    if(retreatDialog.open)retreatDialog.close();
     cancelAnimationFrame(frame);camera=0;viewWidth=BASE_VIEW;
     pointers.clear();drag=null;pinch=null;hpLabels.length=0;hpInspector.hidden=true;
     $('inspectHp').setAttribute('aria-expanded','false');inspectorStamp='';updateZoomLabel();
@@ -1452,7 +1532,16 @@
       $('worker').textContent='働き手 Lv.'+battle.worker;
     }
   };
-  $('retreat').onclick=()=>endBattle(false);
+  const retreatDialog=$('retreatDialog');
+  $('retreat').onclick=()=>{if(battle&&!battle.result&&!retreatDialog.open)retreatDialog.showModal();};
+  $('keepFighting').onclick=()=>retreatDialog.close();
+  $('confirmRetreat').onclick=()=>{
+    retreatDialog.close();
+    if(battle&&!battle.result)endBattle(false);
+  };
+  retreatDialog.addEventListener('click',event=>{
+    if(event.target===retreatDialog)retreatDialog.close();
+  });
   // Saturate multiplication at the largest finite Number so extreme custom
   // stats still have a usable HP bar, damage value and win/lose result.
   function finiteProduct(value,factor) {
@@ -1665,40 +1754,51 @@
     if(!c._visuals[pose])c._visuals[pose]={character:c,pose,image:characterImage(c,pose),frame:c.frames[pose]};
     return c._visuals[pose];
   }
-  const AURA_COLORS=[null,null,'#77dbffcc','#ff715add','#a29acbea','#fffef1dd'];
+  // One gradient per tier and Canvas context; geometry stays in local units.
+  const AURA_STYLE={
+    2:{core:'#77d9f878',flame:'#65d7eea8',tip:'#baf8ffc0',halo:'#77d9f800'},
+    3:{core:'#f45e527f',flame:'#fb664ed0',tip:'#ffca85c8',halo:'#f45e5200'},
+    4:{core:'#a78ac9a0',flame:'#30233ed5',tip:'#beade5bd',halo:'#a78ac900'},
+    5:{core:'#fff1b69c',flame:'#eff4ffdc',tip:'#fffef5d9',halo:'#fff1b600'}
+  };
+  const auraGradients=new Map();
   function renderAura(tier,size,time,visualWidth,detail=true){
     if(!tier||tier===1)return;
-    // Draw behind the unfiltered character. Fixed-size geometry, no shadowBlur
-    // or per-frame image allocation, even when many enemies are on screen.
-    ctx.save();ctx.lineWidth=tier===5?5:3;
-    const radius=Math.max(size,visualWidth)*.53,cy=-size*.53;
-    if(!detail){
-      ctx.strokeStyle=AURA_COLORS[tier];
-      ctx.lineWidth=tier===5?6:4;
-      if(tier===4)ctx.setLineDash([size*.13,size*.07]);
-      ctx.beginPath();ctx.ellipse(0,cy,radius+9,size*.62,0,0,7);ctx.stroke();
-      ctx.restore();return;
+    // Draw translucent energy *behind* the unfiltered sprite; no blur, particles,
+    // per-frame gradient construction, or per-character texture allocations.
+    const style=AURA_STYLE[tier];if(!style)return;
+    let glow=auraGradients.get(tier);
+    if(!glow){
+      glow=ctx.createRadialGradient(0,-6,8,0,-6,87);
+      glow.addColorStop(0,style.core);glow.addColorStop(.58,style.core);
+      glow.addColorStop(1,style.halo);auraGradients.set(tier,glow);
     }
-    if(tier===2){
-      ctx.strokeStyle='#77dbffcc';ctx.beginPath();ctx.ellipse(0,cy,radius+5,size*.55,0,0,7);ctx.stroke();
-      ctx.strokeStyle='#b6f5ff88';ctx.beginPath();ctx.ellipse(0,cy,radius+11,size*.61,0,0,7);ctx.stroke();
-    }else if(tier===3){
-      ctx.strokeStyle='#ff715add';ctx.beginPath();ctx.ellipse(0,cy,radius+7,size*.59,0,0,7);ctx.stroke();
-      for(let i=-1;i<=1;i++){
-        const x=i*radius*.85,y=-size*(.84+(Math.sin(time*5+i)*.035));
-        ctx.fillStyle='#ff977888';ctx.beginPath();ctx.moveTo(x-6,y+12);ctx.lineTo(x,y-8);
-        ctx.lineTo(x+7,y+12);ctx.fill();
+    ctx.save();ctx.translate(0,-size*.53);
+    const width=Math.max(size,visualWidth)*1.25/128;
+    ctx.scale(width,size/128);
+    ctx.fillStyle=glow;ctx.beginPath();ctx.ellipse(0,-6,80,92,0,0,Math.PI*2);ctx.fill();
+    const count=detail?(tier===2?3:5):2;
+    ctx.globalAlpha=detail?.74:.66;ctx.fillStyle=style.flame;ctx.beginPath();
+    for(let i=0;i<count;i++){
+      const x=count===2?(i?39:-39):(i-2)*27;
+      const wave=detail?Math.sin(time*(tier===2?1.5:2.1)+i*1.6)*6:0;
+      const tall=(tier===2?51:74)+(i%2)*13;
+      ctx.moveTo(x-17,43);
+      ctx.bezierCurveTo(x-31,-6,x-10,-tall*.60,x+wave,-tall+wave);
+      ctx.bezierCurveTo(x+12,-tall*.50,x+32,-2,x+17,43);
+      ctx.closePath();
+    }
+    ctx.fill();
+    if(detail){
+      ctx.globalAlpha=.48;ctx.fillStyle=style.tip;ctx.beginPath();
+      for(let i=0;i<count;i++){
+        const x=(i-2)*27,wave=Math.sin(time*(tier===2?1.5:2.1)+i*1.6)*6;
+        const tall=(tier===2?51:74)+(i%2)*13;
+        ctx.moveTo(x-6,13);
+        ctx.quadraticCurveTo(x-4,-tall*.40,x+wave,-tall*.64+wave);
+        ctx.quadraticCurveTo(x+11,-tall*.25,x+7,13);ctx.closePath();
       }
-    }else if(tier===4){
-      ctx.strokeStyle='#a29acbea';ctx.lineWidth=5;ctx.setLineDash([size*.13,size*.07]);
-      ctx.beginPath();ctx.ellipse(0,cy,radius+7,size*.59,0,0,7);ctx.stroke();ctx.setLineDash([]);
-      ctx.strokeStyle='#322142dd';ctx.lineWidth=7;ctx.beginPath();ctx.ellipse(0,cy,radius+13,size*.65,0,0,7);ctx.stroke();
-    }else if(tier===5){
-      ctx.strokeStyle='#fffef1dd';ctx.beginPath();ctx.ellipse(0,cy,radius+7,size*.59,0,0,7);ctx.stroke();
-      for(let i=0;i<4;i++){const angle=i*Math.PI/2+time*.8;
-        const x=Math.cos(angle)*(radius+15),y=cy+Math.sin(angle)*size*.67;
-        ctx.fillStyle='#f4f9ff';ctx.fillRect(x-2,y-2,4,4);
-      }
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -1854,6 +1954,7 @@
     syncBattleUi(b);
   }
   function loop(now) {
+    if(retreatDialog.open){last=now;frame=requestAnimationFrame(loop);return;}
     if(!battle)return;
     const elapsed=Math.max(0,(now-last)/1000);last=now;
     if(!document.hidden){
@@ -1907,7 +2008,7 @@
   canvas.onpointerup=endPointer;
   canvas.onpointercancel=endPointer;
   document.addEventListener('keydown',e=>{
-    if(!battle||document.activeElement?.matches('input'))return;
+    if(!battle||retreatDialog.open||document.activeElement?.matches('input'))return;
     if(e.code.startsWith('Digit')){
       const slot=Number(e.code.slice(-1))-1;
       if(slot>=0&&slot<state.deck.length)spawnAlly(state.deck[slot],slot);
