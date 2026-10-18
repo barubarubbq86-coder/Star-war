@@ -278,6 +278,7 @@
   function page(id) {
     if (battle && id!=='battle') { if(retreatDialog.open)retreatDialog.close();battle=null;hpLabels.length=0;cancelAnimationFrame(frame); }
     document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('show',el.id===id));
+    document.body.classList.toggle('battle-active',id==='battle');
     if (id==='stages') { renderStages();renderStageBuilder(); }
     if (id==='squad') renderSquad();
     if (id==='customAllies') {renderCustomAllies();showImport('ally');}
@@ -1470,6 +1471,7 @@
     $('battleTitle').textContent=stage.name;
     buildUnitButtons();
     page('battle');
+    window.scrollTo?.(0,0);
     accumulator=0;measureCanvas();last=performance.now();frame=requestAnimationFrame(loop);
   }
   function buildUnitButtons() {
@@ -1547,11 +1549,17 @@
   function finiteProduct(value,factor) {
     return Math.min(Number.MAX_VALUE,value*factor);
   }
-  function damageUnit(target,amount) {
+  function damageUnit(target,amount,sourceAlly=false) {
+    if(target.hp<=0)return;
     const actual=Math.min(target.hp,amount);
     target.hp-=actual;target.hit=.13;
     target.staggerBank=Math.min(Number.MAX_VALUE,target.staggerBank+actual);
-    if(target.hp<=0&&battle?.searchReady&&Number.isInteger(target._cell))unindexUnit(battle,target);
+    if(target.hp<=0){
+      // Only a lethal allied attack pays. A dead victim cannot pay twice, even
+      // when several area attacks still reference it in the current step.
+      if(sourceAlly)awardKill(battle,target);
+      if(battle?.searchReady&&Number.isInteger(target._cell))unindexUnit(battle,target);
+    }
     // Existing units retain their 20% rule. New units use N non-lethal HP bands.
     const threshold=target.a?.spriteId?target.max/(target.a.knockbacks+1):target.max*.2;
     const rounding=Math.max(1e-6,threshold*1e-12);
@@ -1560,6 +1568,22 @@
       if(target.staggerBank+rounding>=threshold)target.staggerBank=0;
       target.staggerLeft=STAGGER_TIME; // Tilt and bounce twice for either team.
     }
+  }
+  function awardKill(b,target){
+    if(!b||target.ally||target._rewarded)return;
+    target._rewarded=true;
+    // Effective max HP already includes the stage's aura multiplier. Limit a
+    // single kill so Womo/custom extreme HP cannot fill the worker wallet.
+    const nominal=Math.min(Math.floor(target.max*.1),target.a.type==='B'?350:180);
+    const amount=Math.max(0,Math.min(nominal,Math.floor(b.cap-b.money)));
+    if(!amount)return;
+    b.money+=amount;
+    const notices=b.killNotices||(b.killNotices=[]);
+    // One bounded label also collects simultaneous kills in crowded battles.
+    const latest=notices[notices.length-1];
+    if(latest&&latest.age<.15&&Math.abs(latest.x-target.x)<130){latest.amount+=amount;latest.age=0;return;}
+    if(notices.length>=6)notices.shift();
+    notices.push({x:target.x,amount,age:0});
   }
   // Live 1D buckets retain sequential movement/damage and insertion-order ties.
   const CELL=128,CELL_COUNT=Math.ceil(WORLD/CELL)+1;
@@ -1618,7 +1642,7 @@
   }
   function hitArea(b,u,reach,power){
     if(!b.searchReady){const direction=u.ally?1:-1;
-      for(const v of b.units)if(v.ally!==u.ally&&v.hp>0&&direction*(v.x-u.x)>=-9&&Math.abs(v.x-u.x)<=reach+25)damageUnit(v,power);
+      for(const v of b.units)if(v.ally!==u.ally&&v.hp>0&&direction*(v.x-u.x)>=-9&&Math.abs(v.x-u.x)<=reach+25)damageUnit(v,power,u.ally);
       return;
     }
     const victims=b.victims||(b.victims=[]);victims.length=0;
@@ -1627,13 +1651,14 @@
       for(const v of side[cell])if(v.hp>0&&direction*(v.x-u.x)>=-9&&Math.abs(v.x-u.x)<=reach+25)victims.push(v);
     }
     victims.sort((a,b)=>a._order-b._order);
-    for(const v of victims)damageUnit(v,power);
+    for(const v of victims)if(v.hp>0)damageUnit(v,power,u.ally);
   }
   function update(dt) {
     const b=battle;if(!b||b.result)return;
     b.searchReady=false;
     b.time+=dt;
     b.money=Math.min(b.cap,b.money+(28+15*b.worker)*dt);
+    if(b.killNotices){let visible=0;for(const notice of b.killNotices){notice.age+=dt;if(notice.age<.85)b.killNotices[visible++]=notice;}b.killNotices.length=visible;}
     for(const key of Object.keys(b.cool))b.cool[key]=Math.max(0,b.cool[key]-dt);
     if(b.stage.phase3){
       const events=b.stage.events;
@@ -1676,7 +1701,7 @@
           const level=u.ally?(state.levels[u.allyId]||1)+(state.plus[u.allyId]||0)-1:0;
           const power=finiteProduct(u.a.atk,u.ally?1+.085*level:b.stage.diff);
           if(target){
-            if(u.a.area)hitArea(b,u,reach,power);else damageUnit(target,power);
+            if(u.a.area)hitArea(b,u,reach,power);else damageUnit(target,power,u.ally);
           }else if(u.ally){
             b.enemy-=power;
             if((b.mobTimers||b.stage.phase3)&&b.stage.bossTrigger==='castle')spawnBoss();
@@ -1943,6 +1968,19 @@
     renderCastle(WORLD-105,b.enemy,b.enemyMax,'敵城','#e37780');
     for(const u of orderedActors(b))renderActor(u);
     hpLabels.length=hpLabelCount;drawHpLabels();
+    if(b.killNotices?.length){
+      ctx.save();ctx.textAlign='center';ctx.font='bold 23px sans-serif';
+      ctx.lineWidth=5;ctx.strokeStyle='#102b25';ctx.fillStyle='#b9ffce';
+      for(const notice of b.killNotices){
+        const x=(notice.x-camera)*w/viewWidth;
+        if(x<-80||x>w+80)continue;
+        const label='＋'+notice.amount;
+        const y=GROUND-122-notice.age*48;
+        ctx.globalAlpha=Math.min(1,(.85-notice.age)*4);
+        ctx.strokeText(label,x,y);ctx.fillText(label,x,y);
+      }
+      ctx.restore();
+    }
     ctx.fillStyle='#101c30d9';ctx.fillRect(0,0,w,51);
     ctx.fillStyle='#f8f5e8';ctx.font='20px sans-serif';
     ctx.fillText(b.stage.name+'　'+Math.floor(b.time)+'秒',17,32);

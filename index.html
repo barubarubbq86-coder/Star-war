@@ -55,6 +55,26 @@
     .stage-setting{display:block;max-width:480px;margin:12px 0;color:var(--muted)}.stage-setting[hidden]{display:none}.stage-setting input,.stage-setting select{display:block;width:100%;margin-top:5px}
     .stage-actions{display:flex;gap:8px;flex-wrap:wrap}.stage-actions .bigplay{width:auto;flex:1 1 190px}#stagePreviewName{max-width:100%;padding:0 12px;text-align:center;overflow-wrap:anywhere}
     @media(max-width:760px){#stageEditor .enemy-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    /* The battle section and its ancestors do not clip or scroll: sticky is
+       relative to the document while the action dock stays at the viewport. */
+    body.battle-active .top,body.battle-active .nav{display:none}
+    #battle{width:100vw;margin-inline:calc(50% - 50vw)}
+    #battle .panel{min-height:115svh;padding:0 0 calc(118px + env(safe-area-inset-bottom));border:0;border-radius:0;overflow:visible}
+    #battle .battle-stick{position:sticky;top:env(safe-area-inset-top);z-index:8;background:#0d1e32;box-shadow:0 7px 15px #06111bb8;padding-bottom:3px}
+    #battle .battle-head{margin:0;padding:5px max(10px,env(safe-area-inset-right)) 4px max(10px,env(safe-area-inset-left));align-items:center;gap:8px}
+    #battle .battle-head .stats{display:grid;grid-template-columns:auto 1fr;gap:1px 10px;align-items:center;font-size:clamp(.75rem,2.8vw,.96rem)}
+    #battle #battleTitle{white-space:nowrap;text-overflow:ellipsis;overflow:hidden;max-width:44vw}
+    #battle #battleHp{grid-column:1 / -1;font-size:.85em}
+    #battle .battle-head #retreat{min-height:42px;min-width:75px;padding:.4rem;border-style:dashed}
+    #battle canvas#game{width:100%;height:auto;aspect-ratio:16/9;border:0;border-radius:0}
+    #battle #battleStatus{margin:0;padding:3px max(10px,env(safe-area-inset-left));font-size:.8rem;min-height:23px}
+    #battle .battle-more,#battle .battle-help{display:block;max-width:800px;margin:14px auto;padding:0 14px}
+    #battle .battle-more summary{cursor:pointer;min-height:48px;padding:11px;border:1px solid var(--line);border-radius:10px;font-weight:800}
+    #battle .battlebar{position:fixed;left:0;right:0;bottom:0;z-index:9;width:100%;margin:0;padding:8px max(8px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));background:#102740f5;border-top:2px solid #6199a8;box-shadow:0 -6px 15px #06111bc0;display:grid;grid-template-columns:auto minmax(0,1fr);overflow:visible}
+    #battle .battlebar #unitButtons{min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding-bottom:3px}
+    #battle .battlebar .unitbtn{scroll-snap-align:start;flex:none;min-height:54px}
+    #battle .battlebar #worker{min-height:54px;min-width:80px;max-width:96px;padding:.4rem}
+    @media(orientation:landscape) and (max-height:600px){#battle canvas#game{width:min(100%,calc(55svh * 16 / 9));margin:auto}#battle .battle-head .stats{grid-template-columns:auto auto 1fr}#battle #battleHp{grid-column:auto}#battle .panel{min-height:130svh}}
   </style>
   <script defer src="designs.js"></script>
   <script defer src="characters.js"></script>
@@ -73,12 +93,12 @@
     <button class="bigplay" id="homeEnemyStage">新しい敵7体を選んで遊ぶ</button><button class="primary bigplay" id="quickPlay">次のステージへ</button><div id="homeLog" class="log"></div>
   </div><div class="panel mascot"><div class="orb"><i class="mouth"></i></div></div></div></section>
   <section id="battle" class="screen"><div class="panel">
-    <div class="battle-head"><div class="stats"><strong id="battleTitle">草原</strong><span id="battleMoney">お金 0</span><span id="battleHp">城HP</span></div><button class="danger" id="retreat" aria-haspopup="dialog" aria-controls="retreatDialog">撤退</button></div>
-    <canvas id="game" width="960" height="540" aria-label="横スクロール戦闘画面"></canvas>
-    <div class="zoom-row"><output id="zoomLabel" aria-live="off">表示 100%</output><button id="zoomOut" aria-label="戦闘画面を縮小">－ 縮小</button><button id="zoomIn" aria-label="戦闘画面を拡大">＋ 拡大</button><button id="zoomFit">全体を見る</button><button id="inspectHp" aria-expanded="false" aria-controls="hpInspector">HP詳細</button></div>
-    <output id="battleStatus" aria-live="off"></output><div id="hpInspector" hidden><table><thead><tr><th>陣営</th><th>名前</th><th>現在HP</th><th>最大HP</th><th>位置</th></tr></thead><tbody id="hpRows"></tbody></table></div>
+    <div class="battle-stick"><div class="battle-head"><div class="stats"><strong id="battleTitle">草原</strong><span id="battleMoney">お金 0</span><span id="battleHp">城HP</span></div><button class="danger" id="retreat" aria-haspopup="dialog" aria-controls="retreatDialog">撤退</button></div>
+    <canvas id="game" width="960" height="540" aria-label="横スクロール戦闘画面"></canvas><output id="battleStatus" aria-live="off"></output></div>
+    <details class="battle-more"><summary>表示・ズーム・HP詳細</summary><div class="zoom-row"><output id="zoomLabel" aria-live="off">表示 100%</output><button id="zoomOut" aria-label="戦闘画面を縮小">－ 縮小</button><button id="zoomIn" aria-label="戦闘画面を拡大">＋ 拡大</button><button id="zoomFit">全体を見る</button><button id="inspectHp" aria-expanded="false" aria-controls="hpInspector">HP詳細</button></div>
+    <div id="hpInspector" hidden><table><thead><tr><th>陣営</th><th>名前</th><th>現在HP</th><th>最大HP</th><th>位置</th></tr></thead><tbody id="hpRows"></tbody></table></div></details>
     <div class="battlebar"><button id="worker">働き手 Lv.1</button><div id="unitButtons"></div></div>
-    <p class="hint">仲間を押して出撃。ドラッグで左右に移動。指2本を広げる（ピンチアウト）と縮小して全体が見え、近づける（ピンチイン）と拡大します。攻撃で最大HPの20%を受けるたび2回跳ねます。HPが密集すると表示を間引きます。「HP詳細」で全員の値を確認できます。</p>
+    <p class="hint battle-help">仲間を押して出撃。戦場をドラッグで左右へ、指2本を広げると縮小・近づけると拡大します。戦場の外を縦に動かすとページをスクロールできます。敵を倒すとお金を獲得します。全員の正確なHPは「HP詳細」で確認できます。</p>
   </div></section>
   <dialog id="retreatDialog" class="confirm-dialog" aria-labelledby="retreatQuestion"><h2 id="retreatQuestion">ステージから撤退しますか？</h2><p>撤退すると、この戦闘は敗北として終了します。</p><div class="confirm-actions"><button type="button" class="primary" id="keepFighting" autofocus>戦闘を続ける</button><button type="button" class="danger" id="confirmRetreat">撤退する</button></div></dialog>
   <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><button class="primary bigplay" id="newEnemyStage" aria-controls="stageEditor">新しい敵7体を選んでステージを作る</button><p class="hint">七傑の侵攻は4章・全28面。次の面に挑戦、または好きな章を選べます。自作ステージは下にあります。</p><p id="chapterProgress" class="log" role="status"></p><div id="chapterTabs" class="chapter-tabs" aria-label="章を選ぶ"></div><div id="stageCards" class="cards"></div><details id="customStageList" class="import-panel"><summary>自作ステージを遊ぶ</summary><div id="customStageCards" class="cards"></div></details>
