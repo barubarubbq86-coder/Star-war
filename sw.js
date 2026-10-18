@@ -1,12 +1,12 @@
 // Cache the public game shell. User art remains only in IndexedDB on this device.
 const PREFIX='starling-siege-shell-'+encodeURIComponent(new URL(self.registration.scope).pathname)+'-';
-const CACHE=PREFIX+'v11-phase2.1';
+const CACHE=PREFIX+'v12-phase3';
 const SHELL=['./','./index.html','./game.js','./manifest.webmanifest',
   './icon-192.png','./icon-512.png','./designs.js',
   './assets/neko.png','./assets/hippo-open.png','./assets/hippo-closed.png',
   './assets/snake-low.png','./assets/snake-raised.png','./assets/duo.png',
   './assets/castle-flag.png','./assets/castle-cannon.png','./assets/sunset.webp',
-  './characters.js',
+  './characters.js','./stages.js',
   './assets/characters/ally_neko/idle.png',
   './assets/characters/ally_neko/attack.png',
   './assets/characters/ally_neko/knockback.png',

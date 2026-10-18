@@ -1,4 +1,4 @@
-// Starling Siege: Phase 2. Optional bundled designs; personal art stays on this device.
+// Starling Siege: Phase 3. The previous battle, art and save paths remain in use.
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -11,6 +11,13 @@
   const originalById=new Map(originalCharacters.map(c=>[c.id,c]));
   const originalAllies=new Map(originalCharacters.filter(c=>c.side==='ally').map(c=>[c.slot,c]));
   const originalEnemies=new Map(originalCharacters.filter(c=>c.side==='enemy').map(c=>[c.slot,c]));
+  const campaign=window.SIEGE_CAMPAIGN;
+  if(campaign?.version!==3||campaign.stages?.length!==28||
+     campaign.stages.some(s=>![1,2,3,4,5].includes(s.tier)||
+       s.waves.some(w=>!originalEnemies.has(w.id))||
+       (s.boss&&!originalEnemies.has(s.boss.id)))){
+    $('homeLog').textContent='ステージデータを読み込めませんでした。配信ファイルを確認してください。保存データは変更していません。';return;
+  }
   const characterImages=new Map();
   function originalStats(c){return {...c.stats,id:c.id,name:c.name,type:c.type,spriteId:c.id,color:c.side==='ally'?'#a7edce':'#f3b5ba',rank:1};}
   function characterImage(c,pose='idle'){
@@ -92,20 +99,21 @@
       interval:1.38,color:'#bd83d8',size:81+Math.min(rank,20)*1.6,area:rank>=15
     }))
   ];
-  const baseStages = [
-    ['草原の門',1,[0,1,2],15],['黄昏街道',1.17,[2,3,4],16],
-    ['石壁要塞',1.3,[4,5,6],16],['深緑迷宮',1.46,[6,7,8],17],
-    ['灰の頂',1.65,[8,9,10],17],['嵐の砦',1.85,[9,10,11],18],
-    ['黒雲の城',2.08,[11,12,13],18],['夜の王城',2.35,[12,13,14],19]
-  ].map(([name,diff,pool,boss],theme) => ({name,diff,pool,boss,theme:theme%6}));
+  const baseStages=campaign.stages.map((s,index)=>({
+    ...s,phase3:true,number:index+1,chapter:Math.floor(index/7),theme:index%6,diff:1,
+    pool:[...new Set(s.waves.map(w=>w.id))],boss:s.boss?.id??null,
+    bossTrigger:s.boss?.trigger||'time',bossTime:s.boss?.at??0,
+    events:s.waves.flatMap(w=>Array.from({length:w.count},(_,n)=>({at:w.at+n*w.every,
+      id:w.id,tier:s.tier,power:s.power}))).sort((a,b)=>a.at-b.at)
+  }));
   const stateKey = 'starlingSiege';
   const fresh = () => ({
-    version:7,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
+    version:7,campaignVersion:3,legacyCleared:0,xp:0,cans:150,cleared:0,levels:Array(35).fill(1),
     plus:Array(35).fill(0),owned:[0,1,2,3,4],deck:[0,1,2,3,4],
     customChars:[],customEnemies:[],customStages:[],enemyNames:{},hpDisplay:'bar',lastLogin:''
   });
-  let state;
-  try { state = {...fresh(),...JSON.parse(localStorage.getItem(stateKey)||'{}')}; }
+  let state,savedState={};
+  try {savedState=JSON.parse(localStorage.getItem(stateKey)||'{}')||{};state={...fresh(),...savedState};}
   catch { state=fresh(); }
   const priorVersion=Number(state.version)||0;
   if (priorVersion<2) {
@@ -127,6 +135,13 @@
     state.version=3;
   }
   state.version=7;
+  // Old 8-stage history remains explicit. Up to seven cleared stages carry into
+  // chapter 1; an old complete run opens chapter 2 without skipping new chapters.
+  if(savedState.campaignVersion!==3){
+    const cleared=Number.isInteger(state.cleared)?Math.max(0,Math.min(8,state.cleared)):0;
+    state.legacyCleared=cleared;state.cleared=Math.min(7,cleared);
+  }else state.cleared=Number.isInteger(state.cleared)?Math.max(0,Math.min(28,state.cleared)):0;
+  state.campaignVersion=3;
   if(!['bar','number','both','none'].includes(state.hpDisplay))state.hpDisplay='bar';
   state.customChars=Array.isArray(state.customChars)?state.customChars.slice(0,20).map(raw=>{
     const s=raw&&typeof raw==='object'?raw:{};
@@ -253,6 +268,7 @@
     return list;
   }
   function stages() { return baseStages.concat(state.customStages); }
+  let selectedChapter=Math.min(3,Math.floor(state.cleared/7));
   function log(message) { $('homeLog').textContent=message; }
   function page(id) {
     if (battle && id!=='battle') { battle=null;hpLabels.length=0;cancelAnimationFrame(frame); }
@@ -266,7 +282,7 @@
     wallet();
   }
   $('nav').addEventListener('click',e=>{const id=e.target.dataset.page;if(id)page(id);});
-  $('quickPlay').onclick=()=>startBattle(0);
+  $('quickPlay').onclick=()=>startBattle(Math.min(state.cleared,baseStages.length-1));
 
   // Browser-owned imported drawings live in IndexedDB, not in the hosted files.
   const art=new Map(), images=new Map(), enemyFallbacks=new Map();
@@ -396,24 +412,39 @@
   const artReady=loadArt();
 
   function renderStages() {
-    const wrap=$('stageCards');wrap.replaceChildren();
+    const wrap=$('stageCards'),customWrap=$('customStageCards'),tabs=$('chapterTabs');
+    wrap.replaceChildren();customWrap.replaceChildren();tabs.replaceChildren();
+    campaign.chapters.forEach((name,chapter)=>{
+      const button=document.createElement('button');button.textContent=(chapter+1)+'章 '+name;
+      button.setAttribute('aria-pressed',String(chapter===selectedChapter));
+      if(chapter===selectedChapter)button.classList.add('active');
+      button.onclick=()=>{selectedChapter=chapter;renderStages();};tabs.append(button);
+    });
+    $('chapterProgress').textContent='次は '+Math.min(28,state.cleared+1)+'面 / 28面　'+
+      (state.cleared>=28?'全ステージクリア！':campaign.chapters[Math.min(3,Math.floor(state.cleared/7))]);
     stages().forEach((stage,i)=>{
+      if(i<baseStages.length&&Math.floor(i/7)!==selectedChapter)return;
       const card=document.createElement('article');card.className='card stagecard';
       const title=document.createElement('h3');title.textContent=(i+1)+'. '+stage.name;
       const desc=document.createElement('p');
-      desc.textContent='難易度 ×'+Number(stage.diff).toFixed(2)+' / ボス '+enemyName(stage.boss);
-      if(i>=baseStages.length)desc.textContent+=' / モブ'+stage.pool.length+'種 / '+
+      desc.textContent=stage.phase3?
+        ['通常','青','赤','黒','白'][stage.tier-1]+'オーラ・HP/攻撃'+Math.round(stage.power*100)+'%'+
+        ' / '+(stage.boss===null?'ボスなし':'山場 '+enemyName(stage.boss))+' / 目安 主力Lv.'+stage.level:
+        '難易度 ×'+Number(stage.diff).toFixed(2)+' / ボス '+enemyName(stage.boss);
+      if(!stage.phase3)desc.textContent+=' / モブ'+stage.pool.length+'種 / '+
         (stage.bossTrigger==='castle'?'塔が攻撃されたら出現':'開始'+stage.bossTime+'秒後に出現');
-      const img=document.createElement('img');img.src=enemyArt(stage.boss).src;img.alt='';
+      const img=document.createElement('img');
+      const featured=stage.boss??stage.pool[0];img.src=enemyArt(featured)?.src||'';img.alt=enemyName(featured);
+      if(stage.phase3){const hint=document.createElement('small');hint.textContent=stage.idea;card.append(hint);}
       const locked=i<baseStages.length&&i>state.cleared;
-      const button=document.createElement('button');button.textContent=locked?'未解放':'出撃';
+      const button=document.createElement('button');button.textContent=locked?'未解放':i<state.cleared?'もう一度':'出撃';
       button.disabled=locked;button.onclick=()=>startBattle(i);
       card.append(title,img,desc,button);
       if(i>=baseStages.length){
         const edit=document.createElement('button');edit.textContent='ステージを編集';
         edit.onclick=()=>editStage(i-baseStages.length);card.append(edit);
       }
-      wrap.append(card);
+      (stage.phase3?wrap:customWrap).append(card);
     });
   }
   function renderSquad() {
@@ -1347,10 +1378,12 @@
     $('inspectHp').setAttribute('aria-expanded','false');inspectorStamp='';updateZoomLabel();
     battle={
       index,stage,money:150,cap:1000,worker:1,home:1250,homeMax:1250,
-      enemy:Math.round(900*stage.diff),enemyMax:Math.round(900*stage.diff),
-      units:[],spawn:2.3,time:0,bossSpawned:false,result:null,cool:{},
+      enemy:stage.phase3?stage.castleHp:Math.round(900*stage.diff),
+      enemyMax:stage.phase3?stage.castleHp:Math.round(900*stage.diff),
+      units:[],spawn:2.3,time:0,bossSpawned:!!stage.phase3&&stage.boss===null,
+      waveIndex:0,result:null,cool:{},
       // Custom stages use independent timers. Base stages retain their old rules.
-      mobTimers:index<baseStages.length?null:Object.fromEntries(stage.pool.map(i=>
+      mobTimers:stage.phase3?null:Object.fromEntries(stage.pool.map(i=>
         [i,stage.spawnIntervals[i]]))
     };
     $('worker').textContent='働き手 Lv.1';
@@ -1385,8 +1418,14 @@
       cd:0,hit:0,attackAnim:0,staggerLeft:0,staggerBank:0
     });
   }
-  function spawnEnemy(i,boss=false) {
-    const a=allEnemies()[i];if(!a)return false;
+  function spawnEnemy(i,boss=false,aura=null) {
+    let a=allEnemies()[i];if(!a)return false;
+    if(battle.stage.phase3){
+      // Never mutate the catalog: one image, three poses, independent per-wave stats.
+      const power=aura?.power??battle.stage.power,tier=aura?.tier??battle.stage.tier;
+      a={...a,hp:Math.max(1,Math.round(finiteProduct(a.hp,power))),
+        atk:Math.max(1,Math.round(finiteProduct(a.atk,power))),auraTier:tier};
+    }
     // Protect slower phones if many different mobs are set to very short intervals.
     if(!boss&&battle.mobTimers){
       let count=0;for(const u of battle.units)if(!u.ally&&u.hp>0&&++count>=MAX_ACTIVE_ENEMIES)return false;
@@ -1401,7 +1440,7 @@
     return true;
   }
   function spawnBoss() {
-    if(battle&&!battle.bossSpawned){
+    if(battle&&!battle.bossSpawned&&battle.stage.boss!==null){
       battle.bossSpawned=spawnEnemy(battle.stage.boss,true);
     }
   }
@@ -1507,7 +1546,12 @@
     b.time+=dt;
     b.money=Math.min(b.cap,b.money+(28+15*b.worker)*dt);
     for(const key of Object.keys(b.cool))b.cool[key]=Math.max(0,b.cool[key]-dt);
-    if(b.mobTimers){
+    if(b.stage.phase3){
+      const events=b.stage.events;
+      while(b.waveIndex<events.length&&events[b.waveIndex].at<=b.time+1e-8){
+        const event=events[b.waveIndex++];spawnEnemy(event.id,false,event);
+      }
+    }else if(b.mobTimers){
       for(const i of b.stage.pool){
         const interval=b.stage.spawnIntervals[i];
         b.mobTimers[i]-=dt;
@@ -1524,7 +1568,7 @@
         b.spawn=Math.max(1.5,4.4-b.index*.28)*(.8+Math.random()*.4);
       }
     }
-    if(!b.bossSpawned&&(b.mobTimers?
+    if(!b.bossSpawned&&(b.stage.phase3||b.mobTimers?
       b.stage.bossTrigger==='time'&&b.time>=b.stage.bossTime:
       b.time>=31||b.enemy<=b.enemyMax*.58))spawnBoss();
     prepareTargets(b);
@@ -1546,7 +1590,7 @@
             if(u.a.area)hitArea(b,u,reach,power);else damageUnit(target,power);
           }else if(u.ally){
             b.enemy-=power;
-            if(b.mobTimers&&b.stage.bossTrigger==='castle')spawnBoss();
+            if((b.mobTimers||b.stage.phase3)&&b.stage.bossTrigger==='castle')spawnBoss();
           }
           else b.home-=power;
         }
@@ -1566,12 +1610,15 @@
     const b=battle;if(!b||b.result)return;
     b.result=win?'勝利！':'敗北…';
     if(win){
-      const xp=110+b.index*65,stars=20+
+      const xp=b.stage.phase3?Math.round(1500+200*b.index+60*b.index*b.index):110+b.index*65;
+      const stars=20+
         (b.index<baseStages.length&&b.index>=state.cleared?25:0);
       state.xp+=xp;state.cans+=stars;
-      if(b.index<baseStages.length)state.cleared=Math.max(state.cleared,b.index+1);
-      log('勝利！ XP'+xp+'・★'+stars+'を獲得');
-    }else{state.xp+=25;log('敗北。XP25を獲得');}
+      if(b.index<baseStages.length){state.cleared=Math.max(state.cleared,b.index+1);
+        selectedChapter=Math.min(3,Math.floor(state.cleared/7));}
+      log('勝利！ XP'+xp+'・★'+stars+'。'+
+        (b.stage.phase3&&state.cleared<28?'次は '+(state.cleared+1)+'面！':''));
+    }else{state.xp+=25;log('敗北。XP25。'+(b.stage.phase3?'ヒント：'+b.stage.idea:''));}
     save();
     const ended=b;
     setTimeout(()=>{
@@ -1618,6 +1665,43 @@
     if(!c._visuals[pose])c._visuals[pose]={character:c,pose,image:characterImage(c,pose),frame:c.frames[pose]};
     return c._visuals[pose];
   }
+  const AURA_COLORS=[null,null,'#77dbffcc','#ff715add','#a29acbea','#fffef1dd'];
+  function renderAura(tier,size,time,visualWidth,detail=true){
+    if(!tier||tier===1)return;
+    // Draw behind the unfiltered character. Fixed-size geometry, no shadowBlur
+    // or per-frame image allocation, even when many enemies are on screen.
+    ctx.save();ctx.lineWidth=tier===5?5:3;
+    const radius=Math.max(size,visualWidth)*.53,cy=-size*.53;
+    if(!detail){
+      ctx.strokeStyle=AURA_COLORS[tier];
+      ctx.lineWidth=tier===5?6:4;
+      if(tier===4)ctx.setLineDash([size*.13,size*.07]);
+      ctx.beginPath();ctx.ellipse(0,cy,radius+9,size*.62,0,0,7);ctx.stroke();
+      ctx.restore();return;
+    }
+    if(tier===2){
+      ctx.strokeStyle='#77dbffcc';ctx.beginPath();ctx.ellipse(0,cy,radius+5,size*.55,0,0,7);ctx.stroke();
+      ctx.strokeStyle='#b6f5ff88';ctx.beginPath();ctx.ellipse(0,cy,radius+11,size*.61,0,0,7);ctx.stroke();
+    }else if(tier===3){
+      ctx.strokeStyle='#ff715add';ctx.beginPath();ctx.ellipse(0,cy,radius+7,size*.59,0,0,7);ctx.stroke();
+      for(let i=-1;i<=1;i++){
+        const x=i*radius*.85,y=-size*(.84+(Math.sin(time*5+i)*.035));
+        ctx.fillStyle='#ff977888';ctx.beginPath();ctx.moveTo(x-6,y+12);ctx.lineTo(x,y-8);
+        ctx.lineTo(x+7,y+12);ctx.fill();
+      }
+    }else if(tier===4){
+      ctx.strokeStyle='#a29acbea';ctx.lineWidth=5;ctx.setLineDash([size*.13,size*.07]);
+      ctx.beginPath();ctx.ellipse(0,cy,radius+7,size*.59,0,0,7);ctx.stroke();ctx.setLineDash([]);
+      ctx.strokeStyle='#322142dd';ctx.lineWidth=7;ctx.beginPath();ctx.ellipse(0,cy,radius+13,size*.65,0,0,7);ctx.stroke();
+    }else if(tier===5){
+      ctx.strokeStyle='#fffef1dd';ctx.beginPath();ctx.ellipse(0,cy,radius+7,size*.59,0,0,7);ctx.stroke();
+      for(let i=0;i<4;i++){const angle=i*Math.PI/2+time*.8;
+        const x=Math.cos(angle)*(radius+15),y=cy+Math.sin(angle)*size*.67;
+        ctx.fillStyle='#f4f9ff';ctx.fillRect(x-2,y-2,4,4);
+      }
+    }
+    ctx.restore();
+  }
   function renderActor(u) {
     const x=(u.x-camera)*canvas.width/viewWidth,scale=BASE_VIEW/viewWidth;
     const size=u.a.spriteId?u.a.size:u.ally?(u.a.hp>=450?76:58):u.a.size;
@@ -1635,6 +1719,9 @@
     ctx.fillStyle='#13253a88';ctx.beginPath();
     ctx.ellipse(0,2,size*.32,7,0,0,Math.PI*2);ctx.fill();
     ctx.save();ctx.translate(lunge,-hop);ctx.rotate(tilt);
+    if(!u.ally&&u.a.auraTier)
+      renderAura(u.a.auraTier,size,battle.time,
+        visual?size*visual.frame.box[2]/visual.frame.box[3]:size,battle.auraDetail!==false);
     if(imageReady(img)){
       const metrics=visual?null:spriteMetrics(img,size);
       const w=visual?size*visual.frame.box[2]/visual.frame.box[3]:metrics.w;
@@ -1737,6 +1824,7 @@
   function draw() {
     const b=battle;if(!b)return;
     const w=canvas.width,h=canvas.height;
+    b.auraDetail=b.units.length<=72;
     hpLabelCount=0;
     ctx.fillStyle='#233b60';ctx.fillRect(0,0,w,h);
     const background=selectedDesign('background');

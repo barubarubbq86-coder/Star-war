@@ -48,23 +48,26 @@
     .spawn-choice button{width:100%}.spawn-choice label{display:block;font-size:.82rem;color:var(--muted);margin-top:7px}.spawn-choice input{width:100%;margin-top:4px}
     .enemy-choice{display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0;overflow-wrap:anywhere;white-space:normal}.enemy-choice img{width:72px;height:64px;object-fit:contain}.enemy-choice span,.enemy-choice small{max-width:100%}.enemy-choice small{font-size:.72rem;color:var(--gold)}
     #bossGrid{grid-template-columns:repeat(2,minmax(0,1fr));max-height:400px;margin-bottom:16px}#homeEnemyStage{margin-bottom:12px}#originalEnemyCards{margin-top:12px}
+    .chapter-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin:12px 0}.chapter-tabs button{min-height:52px;white-space:normal;font-size:.86rem}.stagecard small{color:var(--mint);line-height:1.5;min-height:2em}
+    @media(max-width:760px){.chapter-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
     .stage-setting{display:block;max-width:480px;margin:12px 0;color:var(--muted)}.stage-setting[hidden]{display:none}.stage-setting input,.stage-setting select{display:block;width:100%;margin-top:5px}
     .stage-actions{display:flex;gap:8px;flex-wrap:wrap}.stage-actions .bigplay{width:auto;flex:1 1 190px}#stagePreviewName{max-width:100%;padding:0 12px;text-align:center;overflow-wrap:anywhere}
     @media(max-width:760px){#stageEditor .enemy-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
   <script defer src="designs.js"></script>
   <script defer src="characters.js"></script>
+  <script defer src="stages.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body><main id="app">
-  <header class="top"><div><div class="brand">STARLING SIEGE</div><small class="hint">Phase 2.1</small></div><div class="wallet"><span id="xp">XP 0</span><br><span id="cans">★ 150</span></div></header>
+  <header class="top"><div><div class="brand">STARLING SIEGE</div><small class="hint">Phase 3</small></div><div class="wallet"><span id="xp">XP 0</span><br><span id="cans">★ 150</span></div></header>
   <nav class="nav" id="nav">
     <button data-page="home">ホーム</button><button data-page="stages">ステージ</button><button data-page="squad">ユニット</button><button data-page="gacha">ガチャ</button><button data-page="customAllies">自作キャラ 味方</button><button data-page="customEnemies">敵・自作敵</button><button data-page="paint">ペイント</button><button data-page="settings">設定</button>
   </nav>
   <section id="home" class="screen show"><div class="home-grid"><div class="panel hero">
     <div class="hint">ブラウザで遊べる横スクロール防衛ゲーム・絵はこの端末に保存</div><h1>星の砦を<br>守りきれ。</h1>
     <p>手描きの味方や敵を作って、自分だけのステージに挑もう。AndroidではChromeのメニューからホーム画面にも追加できます。</p>
-    <button class="bigplay" id="homeEnemyStage">新しい敵7体を選んで遊ぶ</button><button class="primary bigplay" id="quickPlay">今すぐテストプレイ</button><div id="homeLog" class="log"></div>
+    <button class="bigplay" id="homeEnemyStage">新しい敵7体を選んで遊ぶ</button><button class="primary bigplay" id="quickPlay">次のステージへ</button><div id="homeLog" class="log"></div>
   </div><div class="panel mascot"><div class="orb"><i class="mouth"></i></div></div></div></section>
   <section id="battle" class="screen"><div class="panel">
     <div class="stats"><strong id="battleTitle">草原</strong><span id="battleMoney">お金 0</span><span id="battleHp">城HP</span></div>
@@ -74,7 +77,7 @@
     <div class="battlebar"><button id="worker">働き手 Lv.1</button><div id="unitButtons"></div><button class="danger" id="retreat">撤退</button></div>
     <p class="hint">仲間を押して出撃。ドラッグで左右に移動。指2本を広げる（ピンチアウト）と縮小して全体が見え、近づける（ピンチイン）と拡大します。攻撃で最大HPの20%を受けるたび2回跳ねます。HPが密集すると表示を間引きます。「HP詳細」で全員の値を確認できます。</p>
   </div></section>
-  <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><button class="primary bigplay" id="newEnemyStage" aria-controls="stageEditor">新しい敵7体を選んでステージを作る</button><p class="hint">新しい敵は下の自作ステージで選べます。基本8ステージの敵はこれまでどおりです。</p><div id="stageCards" class="cards"></div>
+  <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><button class="primary bigplay" id="newEnemyStage" aria-controls="stageEditor">新しい敵7体を選んでステージを作る</button><p class="hint">七傑の侵攻は4章・全28面。次の面に挑戦、または好きな章を選べます。自作ステージは下にあります。</p><p id="chapterProgress" class="log" role="status"></p><div id="chapterTabs" class="chapter-tabs" aria-label="章を選ぶ"></div><div id="stageCards" class="cards"></div><details id="customStageList" class="import-panel"><summary>自作ステージを遊ぶ</summary><div id="customStageCards" class="cards"></div></details>
     <details id="stageEditor" class="import-panel"><summary>自作ステージを作る・編集する</summary><label class="stage-setting" for="stageName">ステージ名<input id="stageName" type="text" maxlength="40" autocomplete="off" value="自作ステージ1"></label><div id="stageBuilder" class="two"><div><div class="builder" id="stageControls"></div><h3>登場するモブ</h3><p class="hint">モブを選び、種類ごとに出現間隔を入力します。最初の1体も設定秒数後に出現します（0.1秒以上）。端末を守るため、同時に出現するモブは最大120体です。</p><div id="enemyGrid" class="enemy-grid"></div></div><div><h3>登場するボス（1体選択）</h3><div id="bossGrid" class="enemy-grid" aria-label="ボス候補"></div><label class="stage-setting" for="bossTrigger">ボスの出現条件<select id="bossTrigger"><option value="time">開始から指定した秒数後</option><option value="castle">敵の塔が攻撃されたら</option></select></label><label id="bossTimeRow" class="stage-setting" for="bossTime">開始から何秒後<input id="bossTime" type="number" min="0" step="any" value="31" inputmode="decimal"></label><div class="preview" id="stagePreview"><h2 id="stagePreviewName">自作ステージ1</h2></div><p id="stageSummary" class="log" role="status"></p><div class="stage-actions"><button class="primary bigplay" id="createStage">このステージを作る</button><button id="cancelStageEdit" hidden>編集をやめる</button></div></div></div></details>
   </div></section>
   <section id="squad" class="screen"><div class="panel"><h2>ユニット</h2><p class="hint">追加の「ネコ」「ながネコ」はこの一覧で編成できます。通常・攻撃・ノックバックの3つの絵が戦闘中に切り替わります。</p><p class="hint">最大8体を編成・育成できます。手描き画像は「自作キャラ 味方」から設定できます。</p><div id="allyCards" class="cards"></div></div></section>
