@@ -1,4 +1,4 @@
-// Starling Siege: Phase 3.1. The previous battle, art and save paths remain in use.
+// Starling Siege gameplay. Release number lives in version.js.
 (() => {
   'use strict';
   const $ = id => document.getElementById(id);
@@ -279,6 +279,7 @@
     if (battle && id!=='battle') { if(retreatDialog.open)retreatDialog.close();battle=null;hpLabels.length=0;cancelAnimationFrame(frame); }
     document.querySelectorAll('.screen').forEach(el=>el.classList.toggle('show',el.id===id));
     document.body.classList.toggle('battle-active',id==='battle');
+    globalThis.SIEGE_UPDATES?.setBattleActive(id==='battle');
     if (id==='stages') { renderStages();renderStageBuilder(); }
     if (id==='squad') renderSquad();
     if (id==='customAllies') {renderCustomAllies();showImport('ally');}
@@ -2057,9 +2058,5 @@
   wallet();renderStages();renderSquad();renderRoster();renderOriginalEnemies();refreshImportTargets();
   // Decode once per state; switching images never reads pixels or creates new URLs.
   for(const c of originalCharacters)for(const pose of ['idle','attack','knockback'])characterImage(c,pose);
-  // The first online visit caches only our own game code for later offline visits.
-  if(typeof navigator!=='undefined'&&'serviceWorker' in navigator&&
-      typeof location!=='undefined'&&location.protocol==='https:'){
-    window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
-  }
+  // Registration, waiting updates and safe reload are owned by update.js.
 })();

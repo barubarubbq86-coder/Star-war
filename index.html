@@ -58,6 +58,9 @@
     /* The battle section and its ancestors do not clip or scroll: sticky is
        relative to the document while the action dock stays at the viewport. */
     body.battle-active .top,body.battle-active .nav{display:none}
+    .update-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#173d46;border:2px solid #78d8ac;border-radius:12px;margin:8px 0;padding:12px;color:#efffee;font-weight:800}
+    .update-actions{display:flex;gap:8px;flex-wrap:wrap}.update-actions button{min-height:48px}
+    #updateNotice[hidden],#applyUpdate[hidden],#retryUpdate[hidden],body.battle-active #updateNotice{display:none}
     #battle{width:100vw;margin-inline:calc(50% - 50vw)}
     #battle .panel{min-height:115svh;padding:0 0 calc(118px + env(safe-area-inset-bottom));border:0;border-radius:0;overflow:visible}
     #battle .battle-stick{position:sticky;top:env(safe-area-inset-top);z-index:8;background:#0d1e32;box-shadow:0 7px 15px #06111bb8;padding-bottom:3px}
@@ -76,17 +79,20 @@
     #battle .battlebar #worker{min-height:54px;min-width:80px;max-width:96px;padding:.4rem}
     @media(orientation:landscape) and (max-height:600px){#battle canvas#game{width:min(100%,calc(55svh * 16 / 9));margin:auto}#battle .battle-head .stats{grid-template-columns:auto auto 1fr}#battle #battleHp{grid-column:auto}#battle .panel{min-height:130svh}}
   </style>
+  <script defer src="version.js"></script>
   <script defer src="designs.js"></script>
   <script defer src="characters.js"></script>
   <script defer src="stages.js"></script>
   <script defer src="backup.js"></script>
+  <script defer src="update.js"></script>
   <script defer src="game.js"></script>
 </head>
 <body><main id="app">
-  <header class="top"><div><div class="brand">STARLING SIEGE</div><small class="hint">Phase 3.1</small></div><div class="wallet"><span id="xp">XP 0</span><br><span id="cans">★ 150</span></div></header>
+  <header class="top"><div><div class="brand">STARLING SIEGE</div><small class="hint" id="appVersion">確認中…</small></div><div class="wallet"><span id="xp">XP 0</span><br><span id="cans">★ 150</span></div></header>
   <nav class="nav" id="nav">
     <button data-page="home">ホーム</button><button data-page="stages">ステージ</button><button data-page="squad">ユニット</button><button data-page="gacha">ガチャ</button><button data-page="customAllies">自作キャラ 味方</button><button data-page="customEnemies">敵・自作敵</button><button data-page="paint">ペイント</button><button data-page="settings">設定</button>
   </nav>
+  <aside class="update-notice" id="updateNotice" hidden role="status" aria-live="polite"><span id="updateStatus"></span><div class="update-actions"><button type="button" class="primary" id="applyUpdate" hidden>アップデートする</button><button type="button" id="retryUpdate" hidden>再試行</button></div></aside>
   <section id="home" class="screen show"><div class="home-grid"><div class="panel hero">
     <div class="hint">ブラウザで遊べる横スクロール防衛ゲーム・絵はこの端末に保存</div><h1>星の砦を<br>守りきれ。</h1>
     <p>手描きの味方や敵を作って、自分だけのステージに挑もう。AndroidではChromeのメニューからホーム画面にも追加できます。</p>
@@ -128,6 +134,6 @@
       </div>
     </div>
   </div></section>
-  <section id="settings" class="screen"><div class="panel"><h2>設定</h2><label for="unitHpDisplay">戦闘中のキャラクターHP表示</label><select id="unitHpDisplay"><option value="bar">バーだけ</option><option value="number">数字だけ</option><option value="both">バーと数字の両方</option><option value="none">表示しない</option></select><p class="hint">敵と味方のキャラクターに共通です。数字は「現在HP / 最大HP」で表示します。密集時は重ならない範囲で表示し、大きな値は指数表記になります。戦闘中の「HP詳細」で全員の省略しない値を確認できます。城HPは戦闘画面上部に表示されます。</p><p id="settingsStatus" class="log" role="status"></p><div class="import-panel"><h3>戦闘の見た目</h3><p class="hint">能力は変わりません。保存済みの自作・取り込み画像を優先します。自作キャラの絵はそのままです。</p><div class="design-settings"><label for="allyDesign">味方（基本15体）<select id="allyDesign"></select><img id="allyDesignPreview" alt="" hidden></label><label for="enemyDesign">敵（基本20体）<select id="enemyDesign"></select><img id="enemyDesignPreview" alt="" hidden></label><label for="homeCastleDesign">自陣の城<select id="homeCastleDesign"></select><img id="homeCastleDesignPreview" alt="" hidden></label><label for="enemyCastleDesign">相手の城<select id="enemyCastleDesign"></select><img id="enemyCastleDesignPreview" alt="" hidden></label><label for="backgroundDesign">背景<select id="backgroundDesign"></select><img id="backgroundDesignPreview" alt="" hidden></label></div></div><div class="import-panel"><h3>端末内セーブ</h3><p class="hint">自作キャラの能力・名前、自作ステージの設定、編成、XP、ステージ進行、HP表示設定は変更時に自動保存します。絵と下書きはこのブラウザの画像保存領域に保存します。</p><button id="saveNow">今すぐ端末に保存</button><p id="localSaveStatus" class="log" role="status"></p></div><div class="import-panel"><h3>バックアップと復元</h3><p class="hint">アップデートしても通常は保存データが残ります。サイトデータを消すと自作作品も消えることがあります。定期的にバックアップしてください。ファイルはこの端末内だけで扱います。</p><button id="backupDownload" class="primary">データをバックアップ</button><label class="backup-file" for="backupFile">バックアップから復元するファイルを選ぶ<input id="backupFile" type="file" accept=".ssbackup,application/octet-stream"></label><p id="backupStatus" class="log" role="status"></p></div><p class="credits">仮キャラはオリジナルです。取り込んだ絵や敵画像は、この端末のブラウザだけに保存します。</p></div></section>
+  <section id="settings" class="screen"><div class="panel"><h2>設定</h2><div class="import-panel"><h3>アプリの更新</h3><p class="hint">保存データは消さずに更新します。戦闘中に新版が届いた場合は、戦闘終了後に案内します。</p><button id="checkUpdate" type="button">更新を確認</button><p id="checkUpdateStatus" class="hint" role="status"></p></div><label for="unitHpDisplay">戦闘中のキャラクターHP表示</label><select id="unitHpDisplay"><option value="bar">バーだけ</option><option value="number">数字だけ</option><option value="both">バーと数字の両方</option><option value="none">表示しない</option></select><p class="hint">敵と味方のキャラクターに共通です。数字は「現在HP / 最大HP」で表示します。密集時は重ならない範囲で表示し、大きな値は指数表記になります。戦闘中の「HP詳細」で全員の省略しない値を確認できます。城HPは戦闘画面上部に表示されます。</p><p id="settingsStatus" class="log" role="status"></p><div class="import-panel"><h3>戦闘の見た目</h3><p class="hint">能力は変わりません。保存済みの自作・取り込み画像を優先します。自作キャラの絵はそのままです。</p><div class="design-settings"><label for="allyDesign">味方（基本15体）<select id="allyDesign"></select><img id="allyDesignPreview" alt="" hidden></label><label for="enemyDesign">敵（基本20体）<select id="enemyDesign"></select><img id="enemyDesignPreview" alt="" hidden></label><label for="homeCastleDesign">自陣の城<select id="homeCastleDesign"></select><img id="homeCastleDesignPreview" alt="" hidden></label><label for="enemyCastleDesign">相手の城<select id="enemyCastleDesign"></select><img id="enemyCastleDesignPreview" alt="" hidden></label><label for="backgroundDesign">背景<select id="backgroundDesign"></select><img id="backgroundDesignPreview" alt="" hidden></label></div></div><div class="import-panel"><h3>端末内セーブ</h3><p class="hint">自作キャラの能力・名前、自作ステージの設定、編成、XP、ステージ進行、HP表示設定は変更時に自動保存します。絵と下書きはこのブラウザの画像保存領域に保存します。</p><button id="saveNow">今すぐ端末に保存</button><p id="localSaveStatus" class="log" role="status"></p></div><div class="import-panel"><h3>バックアップと復元</h3><p class="hint">アップデートしても通常は保存データが残ります。サイトデータを消すと自作作品も消えることがあります。定期的にバックアップしてください。ファイルはこの端末内だけで扱います。</p><button id="backupDownload" class="primary">データをバックアップ</button><label class="backup-file" for="backupFile">バックアップから復元するファイルを選ぶ<input id="backupFile" type="file" accept=".ssbackup,application/octet-stream"></label><p id="backupStatus" class="log" role="status"></p></div><p class="credits">仮キャラはオリジナルです。取り込んだ絵や敵画像は、この端末のブラウザだけに保存します。</p></div></section>
 <dialog id="restoreDialog" class="confirm-dialog" aria-labelledby="restoreQuestion"><h2 id="restoreQuestion">バックアップを復元しますか？</h2><p id="restoreSummary"></p><p>現在のデータは上書きされます。先に「データをバックアップ」で退避してください。</p><div class="confirm-actions"><button type="button" class="primary" id="cancelRestore" autofocus>復元しない</button><button type="button" class="danger" id="confirmRestore">上書きして復元</button></div></dialog>
 </main></body></html>
