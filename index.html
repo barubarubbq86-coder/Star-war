@@ -85,7 +85,7 @@
   <script defer src="stages.js"></script>
   <script defer src="backup.js"></script>
   <script defer src="update.js"></script>
-  <script defer src="game.js"></script>
+  <script defer src="additions.js"></script><script defer src="game.js"></script>
 </head>
 <body><main id="app">
   <header class="top"><div><div class="brand">STARLING SIEGE</div><small class="hint" id="appVersion">確認中…</small></div><div class="wallet"><span id="xp">XP 0</span><br><span id="cans">★ 150</span></div></header>
@@ -96,7 +96,7 @@
   <section id="home" class="screen show"><div class="home-grid"><div class="panel hero">
     <div class="hint">ブラウザで遊べる横スクロール防衛ゲーム・絵はこの端末に保存</div><h1>星の砦を<br>守りきれ。</h1>
     <p>手描きの味方や敵を作って、自分だけのステージに挑もう。AndroidではChromeのメニューからホーム画面にも追加できます。</p>
-    <button class="bigplay" id="homeEnemyStage">新しい敵7体を選んで遊ぶ</button><button class="primary bigplay" id="quickPlay">次のステージへ</button><div id="homeLog" class="log"></div>
+    <button class="bigplay" id="homeEnemyStage">オリジナル敵を選んで遊ぶ</button><button class="primary bigplay" id="quickPlay">次のステージへ</button><div id="homeLog" class="log"></div>
   </div><div class="panel mascot"><div class="orb"><i class="mouth"></i></div></div></div></section>
   <section id="battle" class="screen"><div class="panel">
     <div class="battle-stick"><div class="battle-head"><div class="stats"><strong id="battleTitle">草原</strong><span id="battleMoney">お金 0</span><span id="battleHp">城HP</span></div><button class="danger" id="retreat" aria-haspopup="dialog" aria-controls="retreatDialog">撤退</button></div>
@@ -107,7 +107,7 @@
     <p class="hint battle-help">仲間を押して出撃。戦場をドラッグで左右へ、指2本を広げると拡大・近づけると縮小します。戦場の外を縦に動かすとページをスクロールできます。敵を倒すとお金を獲得します。全員の正確なHPは「HP詳細」で確認できます。</p>
   </div></section>
   <dialog id="retreatDialog" class="confirm-dialog" aria-labelledby="retreatQuestion"><h2 id="retreatQuestion">ステージから撤退しますか？</h2><p>撤退すると、この戦闘は敗北として終了します。</p><div class="confirm-actions"><button type="button" class="primary" id="keepFighting" autofocus>戦闘を続ける</button><button type="button" class="danger" id="confirmRetreat">撤退する</button></div></dialog>
-  <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><button class="primary bigplay" id="newEnemyStage" aria-controls="stageEditor">新しい敵7体を選んでステージを作る</button><p class="hint">七傑の侵攻は4章・全28面。次の面に挑戦、または好きな章を選べます。自作ステージは下にあります。</p><p id="chapterProgress" class="log" role="status"></p><div id="chapterTabs" class="chapter-tabs" aria-label="章を選ぶ"></div><div id="stageCards" class="cards"></div><details id="customStageList" class="import-panel"><summary>自作ステージを遊ぶ</summary><div id="customStageCards" class="cards"></div></details>
+  <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><button class="primary bigplay" id="newEnemyStage" aria-controls="stageEditor">オリジナル敵を選んでステージを作る</button><p class="hint">七傑の侵攻は4章・全28面。次の面に挑戦、または好きな章を選べます。自作ステージは下にあります。</p><p id="chapterProgress" class="log" role="status"></p><div id="chapterTabs" class="chapter-tabs" aria-label="章を選ぶ"></div><div id="stageCards" class="cards"></div><h2>老琉さんの五番勝負</h2><p class="hint">いっちゃんの新しい挑戦！ 第一面の勝利で星ネコが仲間に。新キャラの未指定能力・進化条件は調整中です。</p><div id="extraStageCards" class="cards"></div><details id="customStageList" class="import-panel"><summary>自作ステージを遊ぶ</summary><h2>自作ステージ</h2><div id="customStageCards" class="cards"></div></details>
     <details id="stageEditor" class="import-panel"><summary>自作ステージを作る・編集する</summary><label class="stage-setting" for="stageName">ステージ名<input id="stageName" type="text" maxlength="40" autocomplete="off" value="自作ステージ1"></label><div id="stageBuilder" class="two"><div><div class="builder" id="stageControls"></div><h3>登場するモブ</h3><p class="hint">モブを選び、種類ごとに出現間隔を入力します。最初の1体も設定秒数後に出現します（0.1秒以上）。端末を守るため、同時に出現するモブは最大120体です。</p><div id="enemyGrid" class="enemy-grid"></div></div><div><h3>登場するボス（1体選択）</h3><div id="bossGrid" class="enemy-grid" aria-label="ボス候補"></div><label class="stage-setting" for="bossTrigger">ボスの出現条件<select id="bossTrigger"><option value="time">開始から指定した秒数後</option><option value="castle">敵の塔が攻撃されたら</option></select></label><label id="bossTimeRow" class="stage-setting" for="bossTime">開始から何秒後<input id="bossTime" type="number" min="0" step="any" value="31" inputmode="decimal"></label><div class="preview" id="stagePreview"><h2 id="stagePreviewName">自作ステージ1</h2></div><p id="stageSummary" class="log" role="status"></p><div class="stage-actions"><button class="primary bigplay" id="createStage">このステージを作る</button><button id="cancelStageEdit" hidden>編集をやめる</button></div></div></div></details>
   </div></section>
   <section id="squad" class="screen"><div class="panel"><h2>ユニット</h2><p class="hint">追加の「ネコ」「ながネコ」はこの一覧で編成できます。通常・攻撃・ノックバックの3つの絵が戦闘中に切り替わります。</p><p class="hint">最大8体を編成・育成できます。手描き画像は「自作キャラ 味方」から設定できます。</p><div id="allyCards" class="cards"></div></div></section>

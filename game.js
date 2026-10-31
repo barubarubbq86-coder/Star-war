@@ -21,7 +21,16 @@
   if(!window.SIEGE_BACKUP){
     $('homeLog').textContent='バックアップ機能のファイルを読み込めませんでした。更新ファイルを確認してください。保存データは変更していません。';return;
   }
+  const additions=window.SIEGE_ADDITIONS;
+  if(!additions||additions.stages.length!==5){$('homeLog').textContent='追加データが不足しています。更新を確認してください。';return;}
   const characterImages=new Map();
+  function allyDefinition(i){
+    const c=originalAllies.get(i);
+    if(i!==37)return c;
+    const level=state.levels[i]||1;
+    return originalById.get('itchan_'+(level>=20?'thorn_truck_neko':level>=10?'hedgehog_neko':'hoshi_neko'));
+  }
+
   function originalStats(c){return {...c.stats,id:c.id,name:c.name,type:c.type,spriteId:c.id,color:c.side==='ally'?'#a7edce':'#f3b5ba',rank:1};}
   function characterImage(c,pose='idle'){
     const file=c.frames[pose].path;
@@ -191,7 +200,9 @@
   state.owned=Array.isArray(state.owned)?[...new Set(state.owned.filter(n=>Number.isInteger(n)&&n>=0&&(n<15+state.customChars.length||originalAllies.has(n))))]:[0,1,2,3,4];
   if (!state.owned.length) state.owned=[0];
   // The two original allies are available without changing the existing deck/gacha.
-  for(const slot of originalAllies.keys())if(!state.owned.includes(slot))state.owned.push(slot);
+  for(const [slot,c] of originalAllies)if(!c.unlockExtra&&!state.owned.includes(slot))state.owned.push(slot);
+  state.extraCleared=Number.isInteger(state.extraCleared)?Math.max(0,Math.min(5,state.extraCleared)):0;
+  if(state.extraCleared>=1&&!state.owned.includes(37))state.owned.push(37);
   state.deck=Array.isArray(state.deck)?[...new Set(state.deck.filter(n=>state.owned.includes(n)))].slice(0,8):[0,1,2,3,4];
   if (!state.deck.length) state.deck=[state.owned[0]];
   state.levels=Array.isArray(state.levels)?state.levels:Array(35).fill(1);
@@ -269,7 +280,7 @@
       return {...r,...normalizedStats(s.stats,s.role),name:s.name||'バディ',rarity:1,
         color:color[s.color%6]||color[0],legacyImage:s.image||''};
     }));
-    for(const [slot,c] of originalAllies)list[slot]=originalStats(c);
+    for(const [slot,c] of originalAllies)list[slot]=originalStats(allyDefinition(slot));
     return list;
   }
   function stages() { return baseStages.concat(state.customStages); }
@@ -373,7 +384,7 @@
   function allyArt(i) {
     const saved=art.get('ally:'+i);
     if (saved) return saved;
-    if(originalAllies.has(i))return characterImage(originalAllies.get(i));
+    if(originalAllies.has(i))return characterImage(allyDefinition(i));
     return i>=15?getImage(state.customChars[i-15]?.image||''):selectedDesign('ally',i);
   }
   // Twenty deterministic, original creatures keep all stages playable before import.
@@ -503,6 +514,15 @@
     });
     $('chapterProgress').textContent='次は '+Math.min(28,state.cleared+1)+'面 / 28面　'+
       (state.cleared>=28?'全ステージクリア！':campaign.chapters[Math.min(3,Math.floor(state.cleared/7))]);
+    const extraWrap=$('extraStageCards');extraWrap.replaceChildren();
+    additions.stages.forEach((stage,i)=>{
+      const card=document.createElement('article');card.className='card stagecard';
+      const title=document.createElement('h3');title.textContent=(i+1)+'. '+stage.name;
+      const img=document.createElement('img');img.src=enemyArt(stage.events[0].id).src;img.alt=enemyName(stage.events[0].id);
+      const desc=document.createElement('p');desc.textContent=stage.idea+(i===0?' 初回勝利で星ネコが仲間に！':'');
+      const button=document.createElement('button');button.textContent=i>state.extraCleared?'未解放':i<state.extraCleared?'クリア済・もう一度':'出撃';button.disabled=i>state.extraCleared;button.onclick=()=>startBattle('extra:'+i);
+      card.append(title,img,desc,button);extraWrap.append(card);
+    });
     stages().forEach((stage,i)=>{
       if(i<baseStages.length&&Math.floor(i/7)!==selectedChapter)return;
       const card=document.createElement('article');card.className='card stagecard';
@@ -553,6 +573,7 @@
         else if(state.deck.length<8)state.deck.push(i);
         save();renderSquad();
       };
+      if(i===37){const note=document.createElement('small');note.textContent='Lv.10でハリネズミネコ／Lv.20でトラックへ進化（条件・コストは仮設定、特能は保留）';card.append(note);}
       const upgrade=document.createElement('button');upgrade.textContent='レベルUP '+cost+' XP';
       upgrade.disabled=state.xp<cost||lv>=30;
       upgrade.onclick=()=>{
@@ -1452,7 +1473,9 @@
   $('zoomIn').onclick=()=>setViewWidth(viewWidth/1.25);
   $('zoomFit').onclick=()=>setViewWidth(WORLD);
   function startBattle(index) {
-    const stage=stages()[index];
+    const extraIndex=typeof index==='string'&&/^extra:[0-4]$/.test(index)?Number(index.slice(6)):-1;
+    const stage=extraIndex>=0?additions.stages[extraIndex]:stages()[index];
+    if(extraIndex>state.extraCleared)return;
     if(!stage||(index<baseStages.length&&index>state.cleared))return;
     if(retreatDialog.open)retreatDialog.close();
     cancelAnimationFrame(frame);camera=0;viewWidth=BASE_VIEW;
@@ -1460,12 +1483,14 @@
     $('inspectHp').setAttribute('aria-expanded','false');inspectorStamp='';updateZoomLabel();
     battle={
       index,stage,money:150,cap:1000,worker:1,home:1250,homeMax:1250,
-      enemy:stage.phase3?stage.castleHp:Math.round(900*stage.diff),
-      enemyMax:stage.phase3?stage.castleHp:Math.round(900*stage.diff),
+      enemy:stage.phase3||stage.extra?stage.castleHp:Math.round(900*stage.diff),
+      enemyMax:stage.phase3||stage.extra?stage.castleHp:Math.round(900*stage.diff),
       units:[],spawn:2.3,time:0,bossSpawned:!!stage.phase3&&stage.boss===null,
       waveIndex:0,result:null,cool:{},
       // Custom stages use independent timers. Base stages retain their old rules.
-      mobTimers:stage.phase3?null:Object.fromEntries(stage.pool.map(i=>
+      extraTimers:stage.extra?stage.events.map(e=>e.at):null,
+      thresholdDone:false,
+      mobTimers:stage.phase3||stage.extra?null:Object.fromEntries(stage.pool.map(i=>
         [i,stage.spawnIntervals[i]]))
     };
     $('worker').textContent='働き手 Lv.1';
@@ -1510,7 +1535,7 @@
         atk:Math.max(1,Math.round(finiteProduct(a.atk,power))),auraTier:tier};
     }
     // Protect slower phones if many different mobs are set to very short intervals.
-    if(!boss&&battle.mobTimers){
+    if(!boss&&(battle.mobTimers||battle.stage.extra)){
       let count=0;for(const u of battle.units)if(!u.ally&&u.hp>0&&++count>=MAX_ACTIVE_ENEMIES)return false;
     }
     const max=Math.round(finiteProduct(a.hp,battle.stage.diff));
@@ -1521,6 +1546,14 @@
     });
     if(battle.searchReady)indexUnit(battle,battle.units[battle.units.length-1],battle.units.length-1);
     return true;
+  }
+  function spawnExtraThreshold(){
+    const b=battle;
+    if(b?.stage.extra&&!b.thresholdDone&&b.stage.threshold!=null&&b.enemy<=b.stage.threshold){
+      b.thresholdDone=true;
+      for(const id of b.stage.thresholdIds)spawnEnemy(id,true);
+      b.bossSpawned=true;
+    }
   }
   function spawnBoss() {
     if(battle&&!battle.bossSpawned&&battle.stage.boss!==null){
@@ -1661,7 +1694,15 @@
     b.money=Math.min(b.cap,b.money+(28+15*b.worker)*dt);
     if(b.killNotices){let visible=0;for(const notice of b.killNotices){notice.age+=dt;if(notice.age<.85)b.killNotices[visible++]=notice;}b.killNotices.length=visible;}
     for(const key of Object.keys(b.cool))b.cool[key]=Math.max(0,b.cool[key]-dt);
-    if(b.stage.phase3){
+    if(b.stage.extra){
+      for(let n=0;n<b.stage.events.length;n++){
+        const event=b.stage.events[n];
+        if(b.extraTimers[n]<=b.time+1e-8&&spawnEnemy(event.id)){
+          b.extraTimers[n]=event.every?b.extraTimers[n]+event.every:Infinity;
+        }
+      }
+      spawnExtraThreshold();
+    }else if(b.stage.phase3){
       const events=b.stage.events;
       while(b.waveIndex<events.length&&events[b.waveIndex].at<=b.time+1e-8){
         const event=events[b.waveIndex++];spawnEnemy(event.id,false,event);
@@ -1705,6 +1746,7 @@
             if(u.a.area)hitArea(b,u,reach,power);else damageUnit(target,power,u.ally);
           }else if(u.ally){
             b.enemy-=power;
+            if(b.stage.extra)spawnExtraThreshold();
             if((b.mobTimers||b.stage.phase3)&&b.stage.bossTrigger==='castle')spawnBoss();
           }
           else b.home-=power;
@@ -1725,10 +1767,11 @@
     const b=battle;if(!b||b.result)return;
     b.result=win?'勝利！':'敗北…';
     if(win){
-      const xp=b.stage.phase3?Math.round(1500+200*b.index+60*b.index*b.index):110+b.index*65;
+      const xp=b.stage.extra?b.stage.xp:b.stage.phase3?Math.round(1500+200*b.index+60*b.index*b.index):110+b.index*65;
       const stars=20+
         (b.index<baseStages.length&&b.index>=state.cleared?25:0);
       state.xp+=xp;state.cans+=stars;
+      if(b.stage.extra){state.extraCleared=Math.max(state.extraCleared,b.stage.extraIndex+1);if(!state.owned.includes(37))state.owned.push(37);}
       if(b.index<baseStages.length){state.cleared=Math.max(state.cleared,b.index+1);
         selectedChapter=Math.min(3,Math.floor(state.cleared/7));}
       log('勝利！ XP'+xp+'・★'+stars+'。'+
@@ -1775,7 +1818,7 @@
     const c=originalById.get(u.a.spriteId);if(!c)return null;
     // Hand-painted overrides keep their previous priority for ally art.
     if(u.ally&&art.has('ally:'+u.allyId))return null;
-    const pose=u.staggerLeft>0?'knockback':u.attackAnim>0?'attack':'idle';
+    const pose=u.staggerLeft>0?'knockback':u.attackAnim>0?(c.frames.attack2&&u.attackAnim<.12?'attack2':'attack'):'idle';
     if(!c._visuals)c._visuals={};
     if(!c._visuals[pose])c._visuals[pose]={character:c,pose,image:characterImage(c,pose),frame:c.frames[pose]};
     return c._visuals[pose];
@@ -1854,9 +1897,12 @@
       const actualH=visual?size:metrics.h;
       if(u.hit>0)ctx.filter='brightness(1.5)';
       ctx.save();
-      if(visual&&!u.ally)ctx.scale(-1,1);
+      if(visual&&!u.ally&&!visual.character.facesLeft)ctx.scale(-1,1);
       if(!visual&&!u.ally&&u.enemyId<20&&!art.has('enemy:'+enemies[u.enemyId].id)&&designChoice('enemy')?.id!=='original')ctx.scale(-1,1);
-      if(visual)ctx.drawImage(img,...visual.frame.box,-w/2,-actualH,w,actualH);
+      if(visual&&visual.pose==='attack2'&&visual.character.id==='itchan_okiken_rei_idle'){
+        // Keep the head anchored; the source attack rays extend beyond it.
+        const k=size/155;ctx.drawImage(img,...visual.frame.box,-95*k,-155*k,visual.frame.box[2]*k,visual.frame.box[3]*k);
+      }else if(visual)ctx.drawImage(img,...visual.frame.box,-w/2,-actualH,w,actualH);
       else ctx.drawImage(img,-w/2,-actualH,w,actualH);ctx.restore();
       ctx.filter='none';
     }else{
