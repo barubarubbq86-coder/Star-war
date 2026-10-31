@@ -1,4 +1,4 @@
-// Only a verified, complete shell becomes active. User art remains in IndexedDB.
+// Verify the complete release shell before activating an update. User art remains in IndexedDB.
 importScripts('./version.js');
 const PREFIX='starling-siege-shell-'+encodeURIComponent(new URL(self.registration.scope).pathname)+'-';
 const CACHE=PREFIX+globalThis.SIEGE_RELEASE.cache;

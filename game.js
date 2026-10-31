@@ -2029,8 +2029,8 @@
       const distance=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y));
       const bounds=pinch.bounds;
       const fraction=Math.max(0,Math.min(1,((a.x+b.x)/2-bounds.left)/bounds.width));
-      // Requested gesture: spreading fingers reveals more of the battlefield.
-      viewWidth=Math.max(MIN_VIEW,Math.min(WORLD,pinch.view*distance/pinch.distance));
+      // Spreading fingers magnifies the battlefield around the pinch focus.
+      viewWidth=Math.max(MIN_VIEW,Math.min(WORLD,pinch.view*pinch.distance/distance));
       camera=clampCamera(pinch.focus-viewWidth*fraction);
     }else if(drag&&drag.id===e.pointerId){
       camera=clampCamera(drag.camera-(e.clientX-drag.x)*viewWidth/canvasCssWidth);
