@@ -298,6 +298,7 @@
     if (id==='paint') refreshPaintTargets();
     if (id==='settings') $('unitHpDisplay').value=state.hpDisplay;
     wallet();
+    globalThis.SIEGE_PREMIUM?.route(id);
   }
   $('nav').addEventListener('click',e=>{const id=e.target.dataset.page;if(id)page(id);});
   $('quickPlay').onclick=()=>startBattle(Math.min(state.cleared,baseStages.length-1));
@@ -587,6 +588,7 @@
       }
       wrap.append(card);
     });
+    globalThis.SIEGE_PREMIUM?.squad();
   }
   function numberEditor(grid,fields,key,label,value,rules) {
     const row=document.createElement('label'),input=document.createElement('input');
@@ -816,7 +818,7 @@
     const i=choices[Math.floor(Math.random()*choices.length)][1];
     if(state.owned.includes(i)){state.plus[i]=(state.plus[i]||0)+1;$('gachaLog').textContent=baseAllies[i].name+'：重複で+1';}
     else{state.owned.push(i);$('gachaLog').textContent='新しい仲間：'+baseAllies[i].name+'！';}
-    save();
+    save();wallet();
   }
   $('pull30').onclick=()=>pull(false);$('pull100').onclick=()=>pull(true);
 
@@ -851,11 +853,11 @@
   }
 
   // The stage builder doubles as an editor. Keep unsaved values in this draft.
-  const sp={difficulty:0,boss:15,theme:0,pool:[0,1,2],spawnIntervals:{}};
+  const sp={difficulty:0,boss:46,theme:0,pool:[40,41,42],spawnIntervals:{}};
   let editingStage=-1;
   function resetStageBuilder() {
     editingStage=-1;
-    sp.difficulty=0;sp.boss=15;sp.theme=0;sp.pool=[0,1,2];sp.spawnIntervals={};
+    sp.difficulty=0;sp.boss=46;sp.theme=0;sp.pool=[40,41,42];sp.spawnIntervals={};
     $('stageName').value='自作ステージ'+(state.customStages.length+1);
     $('bossTrigger').value='time';$('bossTime').value='31';
     $('bossTimeRow').hidden=false;
@@ -875,12 +877,13 @@
     $('bossTimeRow').hidden=stage.bossTrigger==='castle';
     $('createStage').textContent='変更を保存';
     $('cancelStageEdit').hidden=false;
+    globalThis.SIEGE_PREMIUM?.editor();
     $('stageEditor').open=true;
     renderStageBuilder();
     $('stageEditor').scrollIntoView?.({behavior:'smooth',block:'start'});
   }
   function openEnemyStageEditor(){
-    page('stages');$('stageEditor').open=true;
+    page('stages');globalThis.SIEGE_PREMIUM?.editor();$('stageEditor').open=true;
     $('stageEditor').scrollIntoView?.({behavior:'smooth',block:'start'});
   }
   $('newEnemyStage').onclick=openEnemyStageEditor;
@@ -906,8 +909,8 @@
     const choices=allEnemies();
     // Promote new originals in the editor only; stable saved IDs and pools stay intact.
     const newFirst=(a,b)=>Number(originalEnemies.has(b))-Number(originalEnemies.has(a));
-    const bosses=choices.map((e,i)=>e.type==='B'?i:-1).filter(i=>i>=0).sort(newFirst);
-    const mobs=choices.map((e,i)=>e.type==='M'?i:-1).filter(i=>i>=0).sort(newFirst);
+    const bosses=choices.map((e,i)=>e.type==='B'?i:-1).filter(i=>i>=20||(i>=0&&editingStage>=0&&(sp.boss===i||sp.pool.includes(i)))).sort(newFirst);
+    const mobs=choices.map((e,i)=>e.type==='M'?i:-1).filter(i=>i>=20||(i>=0&&editingStage>=0&&(sp.boss===i||sp.pool.includes(i)))).sort(newFirst);
     if(!bosses.includes(sp.boss))sp.boss=bosses[0];
     sp.pool=sp.pool.filter(i=>mobs.includes(i));
     const wrap=$('stageControls');wrap.replaceChildren();
@@ -1782,7 +1785,7 @@
     setTimeout(()=>{
       if(battle===ended){
         battle=null;hpLabels.length=0;cancelAnimationFrame(frame);
-        page('stages');
+        page(globalThis.SIEGE_PREMIUM?'home':'stages');
       }
     },1700);
   }
@@ -2104,5 +2107,12 @@
   wallet();renderStages();renderSquad();renderRoster();renderOriginalEnemies();refreshImportTargets();
   // Decode once per state; switching images never reads pixels or creates new URLs.
   for(const c of originalCharacters)for(const pose of ['idle','attack','knockback'])characterImage(c,pose);
+
+  globalThis.SIEGE_PREMIUM?.init({page,startBattle,renderStages,renderSquad,renderStageBuilder,resetStageBuilder,
+    snapshot:()=>({xp:state.xp,cans:state.cans,cleared:state.cleared,extraCleared:state.extraCleared,deck:[...state.deck],owned:[...state.owned],levels:[...state.levels],plus:[...state.plus]}),
+    unitStats:(i,offset=0)=>{const lv=Math.min(30,(state.levels[i]||1)+offset);const a=i===37?originalStats(originalById.get('itchan_'+(lv>=20?'thorn_truck_neko':lv>=10?'hedgehog_neko':'hoshi_neko'))):allies()[i];const factor=1+.085*(lv+(state.plus[i]||0)-1);return {hp:Math.round(finiteProduct(a.hp,factor)),atk:finiteProduct(a.atk,factor),range:a.range,cost:a.cost};},
+    allies,allyArt,enemyArt,enemyName,baseStages,extraStages:additions.stages,chapters:campaign.chapters,
+    setChapter:n=>{selectedChapter=n;renderStages();},isBattle:()=>!!battle
+  });
   // Registration, waiting updates and safe reload are owned by update.js.
 })();

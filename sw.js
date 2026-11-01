@@ -2,39 +2,7 @@
 importScripts('./version.js');
 const PREFIX='starling-siege-shell-'+encodeURIComponent(new URL(self.registration.scope).pathname)+'-';
 const CACHE=PREFIX+globalThis.SIEGE_RELEASE.cache;
-const SHELL=['./additions.js','./assets/itchan/hedgehog_neko.png','./assets/itchan/star_rei.png','./assets/itchan/okiken_rei_attack_2.png','./assets/itchan/teniya_butarin.png','./assets/itchan/new_battle_mouse.png','./assets/itchan/zombie_mee.png','./assets/itchan/berserk_pumpkin_nekomuto.png','./assets/itchan/battle_mouse.png','./assets/itchan/wanko.png','./assets/itchan/kuma.png','./assets/itchan/teniya_wan.png','./assets/itchan/ousama.png','./assets/itchan/okiken_rei_idle.png','./assets/itchan/pumpkin_nekomuto.png','./assets/itchan/teniya_kabarin.png','./assets/itchan/thorn_truck_neko.png','./assets/itchan/buta.png','./assets/itchan/mouth_only.png','./assets/itchan/wanick.png','./assets/itchan/mee.png','./assets/itchan/mr_okyawanko_rei.png','./assets/itchan/berserk_enemy.png','./assets/itchan/hoshi_neko.png','./assets/itchan/teniya_nyoro.png','./assets/itchan/kaba.png','./assets/itchan/nyoro.png','./assets/itchan/jackie.png','./assets/itchan/rei_no_yatsu.png','./assets/itchan/usagin.png','./assets/itchan/danger_rourusan.png','./assets/itchan/gori.png','./assets/itchan/ikkaku.png','./assets/itchan/okiken_rei_attack_1.png','./','./index.html','./version.js','./update.js','./release-manifest.json','./game.js','./manifest.webmanifest',
-  './icon-192.png','./icon-512.png','./designs.js','./backup.js',
-  './assets/neko.png','./assets/hippo-open.png','./assets/hippo-closed.png',
-  './assets/snake-low.png','./assets/snake-raised.png','./assets/duo.png',
-  './assets/castle-flag.png','./assets/castle-cannon.png','./assets/sunset.webp',
-  './characters.js','./stages.js',
-  './assets/characters/ally_neko/idle.png',
-  './assets/characters/ally_neko/attack.png',
-  './assets/characters/ally_neko/knockback.png',
-  './assets/characters/ally_naganeko/idle.png',
-  './assets/characters/ally_naganeko/attack.png',
-  './assets/characters/ally_naganeko/knockback.png',
-  './assets/characters/enemy_womosan/idle.png',
-  './assets/characters/enemy_womosan/attack.png',
-  './assets/characters/enemy_womosan/knockback.png',
-  './assets/characters/enemy_rourusan/idle.png',
-  './assets/characters/enemy_rourusan/attack.png',
-  './assets/characters/enemy_rourusan/knockback.png',
-  './assets/characters/enemy_take/idle.png',
-  './assets/characters/enemy_take/attack.png',
-  './assets/characters/enemy_take/knockback.png',
-  './assets/characters/enemy_kangaryu/idle.png',
-  './assets/characters/enemy_kangaryu/attack.png',
-  './assets/characters/enemy_kangaryu/knockback.png',
-  './assets/characters/enemy_gomasama/idle.png',
-  './assets/characters/enemy_gomasama/attack.png',
-  './assets/characters/enemy_gomasama/knockback.png',
-  './assets/characters/enemy_paon/idle.png',
-  './assets/characters/enemy_paon/attack.png',
-  './assets/characters/enemy_paon/knockback.png',
-  './assets/characters/enemy_bunbunsensei/idle.png',
-  './assets/characters/enemy_bunbunsensei/attack.png',
-  './assets/characters/enemy_bunbunsensei/knockback.png'];
+const SHELL=['./','./additions.js','./assets/castle-cannon.png','./assets/castle-flag.png','./assets/characters/ally_naganeko/attack.png','./assets/characters/ally_naganeko/idle.png','./assets/characters/ally_naganeko/knockback.png','./assets/characters/ally_neko/attack.png','./assets/characters/ally_neko/idle.png','./assets/characters/ally_neko/knockback.png','./assets/characters/enemy_bunbunsensei/attack.png','./assets/characters/enemy_bunbunsensei/idle.png','./assets/characters/enemy_bunbunsensei/knockback.png','./assets/characters/enemy_gomasama/attack.png','./assets/characters/enemy_gomasama/idle.png','./assets/characters/enemy_gomasama/knockback.png','./assets/characters/enemy_kangaryu/attack.png','./assets/characters/enemy_kangaryu/idle.png','./assets/characters/enemy_kangaryu/knockback.png','./assets/characters/enemy_paon/attack.png','./assets/characters/enemy_paon/idle.png','./assets/characters/enemy_paon/knockback.png','./assets/characters/enemy_rourusan/attack.png','./assets/characters/enemy_rourusan/idle.png','./assets/characters/enemy_rourusan/knockback.png','./assets/characters/enemy_take/attack.png','./assets/characters/enemy_take/idle.png','./assets/characters/enemy_take/knockback.png','./assets/characters/enemy_womosan/attack.png','./assets/characters/enemy_womosan/idle.png','./assets/characters/enemy_womosan/knockback.png','./assets/duo.png','./assets/hippo-closed.png','./assets/hippo-open.png','./assets/itchan/battle_mouse.png','./assets/itchan/berserk_enemy.png','./assets/itchan/berserk_pumpkin_nekomuto.png','./assets/itchan/buta.png','./assets/itchan/danger_rourusan.png','./assets/itchan/gori.png','./assets/itchan/hedgehog_neko.png','./assets/itchan/hoshi_neko.png','./assets/itchan/ikkaku.png','./assets/itchan/jackie.png','./assets/itchan/kaba.png','./assets/itchan/kuma.png','./assets/itchan/mee.png','./assets/itchan/mouth_only.png','./assets/itchan/mr_okyawanko_rei.png','./assets/itchan/new_battle_mouse.png','./assets/itchan/nyoro.png','./assets/itchan/okiken_rei_attack_1.png','./assets/itchan/okiken_rei_attack_2.png','./assets/itchan/okiken_rei_idle.png','./assets/itchan/ousama.png','./assets/itchan/pumpkin_nekomuto.png','./assets/itchan/rei_no_yatsu.png','./assets/itchan/star_rei.png','./assets/itchan/teniya_butarin.png','./assets/itchan/teniya_kabarin.png','./assets/itchan/teniya_nyoro.png','./assets/itchan/teniya_wan.png','./assets/itchan/thorn_truck_neko.png','./assets/itchan/usagin.png','./assets/itchan/wanick.png','./assets/itchan/wanko.png','./assets/itchan/zombie_mee.png','./assets/neko.png','./assets/premium-adventure.webp','./assets/snake-low.png','./assets/snake-raised.png','./assets/sunset.webp','./backup.js','./characters.js','./designs.js','./game.js','./icon-192.png','./icon-512.png','./index.html','./manifest.webmanifest','./premium.css','./premium.js','./stages.js','./update.js','./version.js','./release-manifest.json'];
 const scope=self.registration.scope;
 const files=[...new Set(SHELL.map(file=>file==='./'?'index.html':file.slice(2)))];
 const cachedFiles=new Set(files);

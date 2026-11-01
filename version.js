@@ -1,1 +1,1 @@
-globalThis.SIEGE_RELEASE=Object.freeze({id:'3.6',label:'Phase 3.6',cache:'v17-phase3.6'});
+globalThis.SIEGE_RELEASE=Object.freeze({id:'3.8',label:'Phase 3.8',cache:'v18-phase3.8'});
