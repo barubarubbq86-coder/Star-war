@@ -85,8 +85,10 @@
   <script defer src="stages.js"></script>
   <script defer src="backup.js"></script>
   <script defer src="update.js"></script>
-  <script defer src="additions.js"></script><script defer src="premium.js"></script><script defer src="game.js"></script>
+  <script defer src="additions.js"></script><script defer src="premium.js"></script>
+<script defer src="battle-ui.js"></script><script defer src="game.js"></script>
 <link rel="stylesheet" href="./premium.css">
+<link rel="stylesheet" href="./battle-ui.css">
 </head>
 <body><main id="app">
   <header class="top"><div><div class="brand">STARLING SIEGE</div><small class="hint" id="appVersion">確認中…</small></div><div class="wallet"><span id="xp">XP 0</span><br><span id="cans">★ 150</span></div></header>
@@ -101,13 +103,21 @@
   </div><div class="panel mascot"><div class="orb"><i class="mouth"></i></div></div></div></section>
   <section id="battle" class="screen"><div class="panel">
     <div class="battle-stick"><div class="battle-head"><div class="stats"><strong id="battleTitle">草原</strong><span id="battleMoney">お金 0</span><span id="battleHp">城HP</span></div><button class="danger" id="retreat" aria-haspopup="dialog" aria-controls="retreatDialog">撤退</button></div>
+    <div id="castleStrip" aria-hidden="true"></div>
     <canvas id="game" width="960" height="540" aria-label="横スクロール戦闘画面"></canvas><output id="battleStatus" aria-live="off"></output></div>
     <details class="battle-more"><summary>表示・ズーム・HP詳細</summary><div class="zoom-row"><output id="zoomLabel" aria-live="off">表示 100%</output><button id="zoomOut" aria-label="戦闘画面を縮小">－ 縮小</button><button id="zoomIn" aria-label="戦闘画面を拡大">＋ 拡大</button><button id="zoomFit">全体を見る</button><button id="inspectHp" aria-expanded="false" aria-controls="hpInspector">HP詳細</button></div>
+    <p id="castleExact" class="castle-exact"></p>
+    <p class="hint battle-help">仲間を押して出撃。戦場をドラッグで左右へ、指2本を広げると拡大・近づけると縮小します。戦場の外を縦に動かすとページをスクロールできます。敵を倒すとお金を獲得します。全員の正確なHPは「HP詳細」で確認できます。</p>
     <div id="hpInspector" hidden><table><thead><tr><th>陣営</th><th>名前</th><th>現在HP</th><th>最大HP</th><th>位置</th></tr></thead><tbody id="hpRows"></tbody></table></div></details>
     <div class="battlebar"><button id="worker">働き手 Lv.1</button><div id="unitButtons"></div></div>
-    <p class="hint battle-help">仲間を押して出撃。戦場をドラッグで左右へ、指2本を広げると拡大・近づけると縮小します。戦場の外を縦に動かすとページをスクロールできます。敵を倒すとお金を獲得します。全員の正確なHPは「HP詳細」で確認できます。</p>
+    <div class="battle-brief"><span class="brief-star" aria-hidden="true">✦</span><div><small>この戦いのヒント</small><p id="battleOrders"></p></div></div>
   </div></section>
-  <dialog id="retreatDialog" class="confirm-dialog" aria-labelledby="retreatQuestion"><h2 id="retreatQuestion">ステージから撤退しますか？</h2><p>撤退すると、この戦闘は敗北として終了します。</p><div class="confirm-actions"><button type="button" class="primary" id="keepFighting" autofocus>戦闘を続ける</button><button type="button" class="danger" id="confirmRetreat">撤退する</button></div></dialog>
+  <dialog id="battleResultDialog" class="battle-result-dialog" aria-labelledby="resultHeading" aria-describedby="resultStage">
+    <div class="result-crest" aria-hidden="true">✦</div><p id="resultCaption"></p><h2 id="resultHeading"></h2><p id="resultStage"></p>
+    <div class="result-spoils"><div><small>獲得XP</small><strong id="resultXp"></strong></div><div><small>星缶</small><strong id="resultCans"></strong></div><div><small>戦闘時間</small><strong id="resultTime"></strong></div></div>
+    <p id="resultHint"></p><div class="result-actions"><button id="resultMap" class="primary" autofocus>マップへ戻る</button><button id="resultRetry">もう一度挑む</button><button id="resultHome">ホームへ</button></div>
+  </dialog>
+  <dialog id="retreatDialog" class="confirm-dialog" aria-labelledby="retreatQuestion"><div class="dialog-emblem" aria-hidden="true">✦</div><small class="dialog-kicker">ひと休み</small><h2 id="retreatQuestion">ステージから撤退しますか？</h2><p>撤退すると、この戦闘は敗北として終了します。</p><div class="confirm-actions"><button type="button" class="primary" id="keepFighting" autofocus>戦闘を続ける</button><button type="button" class="danger" id="confirmRetreat">撤退する</button></div></dialog>
   <section id="stages" class="screen"><div class="panel"><h2>ステージ選択</h2><button class="primary bigplay" id="newEnemyStage" aria-controls="stageEditor">オリジナル敵を選んでステージを作る</button><p class="hint">七傑の侵攻は4章・全28面。次の面に挑戦、または好きな章を選べます。自作ステージは下にあります。</p><p id="chapterProgress" class="log" role="status"></p><div id="chapterTabs" class="chapter-tabs" aria-label="章を選ぶ"></div><div id="stageCards" class="cards"></div><h2>老琉さんの五番勝負</h2><p class="hint">いっちゃんの新しい挑戦！ 第一面の勝利で星ネコが仲間に。新キャラの未指定能力・進化条件は調整中です。</p><div id="extraStageCards" class="cards"></div><details id="customStageList" class="import-panel"><summary>自作ステージを遊ぶ</summary><h2>自作ステージ</h2><div id="customStageCards" class="cards"></div></details>
     <details id="stageEditor" class="import-panel"><summary>自作ステージを作る・編集する</summary><label class="stage-setting" for="stageName">ステージ名<input id="stageName" type="text" maxlength="40" autocomplete="off" value="自作ステージ1"></label><div id="stageBuilder" class="two"><div><div class="builder" id="stageControls"></div><h3>登場するモブ</h3><p class="hint">モブを選び、種類ごとに出現間隔を入力します。最初の1体も設定秒数後に出現します（0.1秒以上）。端末を守るため、同時に出現するモブは最大120体です。</p><div id="enemyGrid" class="enemy-grid"></div></div><div><h3>登場するボス（1体選択）</h3><div id="bossGrid" class="enemy-grid" aria-label="ボス候補"></div><label class="stage-setting" for="bossTrigger">ボスの出現条件<select id="bossTrigger"><option value="time">開始から指定した秒数後</option><option value="castle">敵の塔が攻撃されたら</option></select></label><label id="bossTimeRow" class="stage-setting" for="bossTime">開始から何秒後<input id="bossTime" type="number" min="0" step="any" value="31" inputmode="decimal"></label><div class="preview" id="stagePreview"><h2 id="stagePreviewName">自作ステージ1</h2></div><p id="stageSummary" class="log" role="status"></p><div class="stage-actions"><button class="primary bigplay" id="createStage">このステージを作る</button><button id="cancelStageEdit" hidden>編集をやめる</button></div></div></div></details>
   </div></section>

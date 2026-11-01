@@ -1447,7 +1447,7 @@
   let battle=null,frame=0,last=0,camera=0,viewWidth=BASE_VIEW,drag=null,pinch=null;
   let accumulator=0,canvasCssWidth=960;
   const STEP=1/60,MAX_CATCHUP=.5,MAX_STEPS=30;
-  const moneyLabel=$('battleMoney'),castleLabel=$('battleHp'),statusLabel=$('battleStatus'),zoomLabel=$('zoomLabel');
+  const workerLabel=$('worker'),moneyLabel=$('battleMoney'),castleLabel=$('battleHp'),statusLabel=$('battleStatus'),zoomLabel=$('zoomLabel');
   let unitButtons=[];
   const hpLabels=[];let hpLabelCount=0;
   const hpLaneEnds=[];
@@ -1499,6 +1499,8 @@
     $('worker').textContent='働き手 Lv.1';
     $('battleTitle').textContent=stage.name;
     buildUnitButtons();
+    globalThis.SIEGE_BATTLE_UI?.start(battle,unitButtons);
+    syncBattleUi(battle);
     page('battle');
     window.scrollTo?.(0,0);
     accumulator=0;measureCanvas();last=performance.now();frame=requestAnimationFrame(loop);
@@ -1568,7 +1570,7 @@
     const cost=100*battle.worker;
     if(battle.worker<8&&battle.money>=cost){
       battle.money-=cost;battle.worker++;battle.cap+=500;
-      $('worker').textContent='働き手 Lv.'+battle.worker;
+      syncBattleUi(battle);
     }
   };
   const retreatDialog=$('retreatDialog');
@@ -1768,6 +1770,7 @@
   }
   function endBattle(win) {
     const b=battle;if(!b||b.result)return;
+    const beforeXp=state.xp,beforeCans=state.cans;
     b.result=win?'勝利！':'敗北…';
     if(win){
       const xp=b.stage.extra?b.stage.xp:b.stage.phase3?Math.round(1500+200*b.index+60*b.index*b.index):110+b.index*65;
@@ -1782,10 +1785,13 @@
     }else{state.xp+=25;log('敗北。XP25。'+(b.stage.phase3?'ヒント：'+b.stage.idea:''));}
     save();
     const ended=b;
+    const resultSummary={win,index:b.index,name:b.stage.name,time:b.time,hint:b.stage.idea,
+      xp:state.xp-beforeXp,cans:state.cans-beforeCans};
     setTimeout(()=>{
       if(battle===ended){
         battle=null;hpLabels.length=0;cancelAnimationFrame(frame);
-        page(globalThis.SIEGE_PREMIUM?'home':'stages');
+        if(globalThis.SIEGE_BATTLE_UI)globalThis.SIEGE_BATTLE_UI.showResult(resultSummary);
+        else page(globalThis.SIEGE_PREMIUM?'home':'stages');
       }
     },1700);
   }
@@ -1977,6 +1983,10 @@
   }
   function syncBattleUi(b){
     updateZoomLabel();
+    const workerButton=workerLabel,workerMax=b.worker>=8,workerCost=100*b.worker;
+    setText(workerButton,workerMax?'働き手 Lv.8\n最大レベル':'働き手 Lv.'+b.worker+'\n次 Lv.'+(b.worker+1)+'\n'+workerCost+'円'+(b.money<workerCost?'・不足':''));
+    const workerDisabled=!!b.result||workerMax||b.money<workerCost;
+    if(workerButton.disabled!==workerDisabled)workerButton.disabled=workerDisabled;
     setText(moneyLabel,'お金 '+Math.floor(b.money)+' / '+b.cap);
     setText(castleLabel,'味方城 '+Math.max(0,Math.ceil(b.home))+' / '+b.homeMax+' ｜ 敵城 '+Math.max(0,Math.ceil(b.enemy))+' / '+b.enemyMax);
     let ally=0,enemy=0;for(const u of b.units){if(u.ally)ally++;else enemy++;}
@@ -1985,6 +1995,7 @@
       const disabled=!!b.result||b.money<cost||b.cool[slot]>0;
       if(element.disabled!==disabled)element.disabled=disabled;
     }
+    globalThis.SIEGE_BATTLE_UI?.sync(b);
     if(!hpInspector.hidden)refreshInspector(b);
   }
   // Exact HP uses the Number's round-trip decimal representation, never compacted.
@@ -2031,9 +2042,7 @@
       }
       ctx.restore();
     }
-    ctx.fillStyle='#101c30d9';ctx.fillRect(0,0,w,51);
-    ctx.fillStyle='#f8f5e8';ctx.font='20px sans-serif';
-    ctx.fillText(b.stage.name+'　'+Math.floor(b.time)+'秒',17,32);
+    // Stage and time are displayed at readable CSS-pixel size in the HUD.
     if(b.result){
       ctx.fillStyle='#07111ddd';ctx.fillRect(0,0,w,h);
       ctx.fillStyle='#8cf0c1';ctx.font='bold 64px sans-serif';
@@ -2114,5 +2123,6 @@
     allies,allyArt,enemyArt,enemyName,baseStages,extraStages:additions.stages,chapters:campaign.chapters,
     setChapter:n=>{selectedChapter=n;renderStages();},isBattle:()=>!!battle
   });
+  globalThis.SIEGE_BATTLE_UI?.init({page,startBattle,allies,allyArt,deck:()=>state.deck});
   // Registration, waiting updates and safe reload are owned by update.js.
 })();
