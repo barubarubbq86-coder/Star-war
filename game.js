@@ -1821,6 +1821,7 @@
     ctx.fillStyle='#182c45';ctx.fillRect(-42,-164,84,9);
     ctx.fillStyle='#78e7b2';ctx.fillRect(-42,-164,84*Math.max(0,hp/max),9);
     ctx.fillStyle='#fff';ctx.font='16px sans-serif';
+    ctx.lineWidth=3;ctx.lineJoin='round';ctx.strokeStyle='#263d36';ctx.strokeText(label,-40,-177);
     ctx.fillText(label,-40,-177);ctx.restore();
   }
   function characterVisual(u){
@@ -2015,7 +2016,7 @@
     ctx.fillStyle='#233b60';ctx.fillRect(0,0,w,h);
     const background=selectedDesign('background');
     if(imageReady(background))ctx.drawImage(background,0,0,w,h);
-    else{
+    else if(!globalThis.SIEGE_BATTLE_SCENE?.draw(ctx,b.stage,camera,viewWidth,WORLD,GROUND)){
     ctx.fillStyle=color[b.stage.theme%6]+'77';ctx.beginPath();
     ctx.arc(230-camera*.12,143,115,0,2*Math.PI);ctx.fill();
     for(let i=0;i<12;i++){
@@ -2025,6 +2026,7 @@
     ctx.fillStyle='#577d66';ctx.fillRect(0,GROUND,w,h-GROUND);
     ctx.fillStyle='#add58e';ctx.fillRect(0,GROUND,w,5);
     }
+    if(!imageReady(background))globalThis.SIEGE_BATTLE_SCENE?.castleGround(ctx,camera,viewWidth,WORLD,GROUND,BASE_VIEW);
     renderCastle(105,b.home,b.homeMax,'味方城','#6fd5b2');
     renderCastle(WORLD-105,b.enemy,b.enemyMax,'敵城','#e37780');
     for(const u of orderedActors(b))renderActor(u);

@@ -11,5 +11,5 @@ window.SIEGE_DESIGNS=Object.freeze({
     {id:'duo',name:'添付：2体組',file:'duo.png'}],
   homeCastle:[{id:'original',name:'従来の味方城'},{id:'flag',name:'添付：赤旗の石の城',file:'castle-flag.png'}],
   enemyCastle:[{id:'original',name:'従来の敵城'},{id:'cannon',name:'添付：砲台つき猫城',file:'castle-cannon.png'}],
-  background:[{id:'original',name:'従来の背景'},{id:'sunset',name:'添付：夕焼けの戦場',file:'sunset.webp'}]
+  background:[{id:'original',name:'絵本の戦場（章で変化）'},{id:'sunset',name:'添付：夕焼けの戦場',file:'sunset.webp'}]
 });
